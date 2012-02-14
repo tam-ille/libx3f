@@ -1,0 +1,26 @@
+Copyright (c) 2011 Tam Merlant <tam.ille@free.fr>
+Actually, the library and it's demo software are covered by the GPL 
+license v3.
+Please refer to file gpl-3.0.txt
+
+Parts of the code are derived from Roland Karlsson's work on X3FTools:
+http://www.proxel.se/x3f.html
+
+Other parts of the code comes from Dave Coffin's dcraw:
+http://www.cybercom.net/~dcoffin/dcraw/
+
+
+To compile the lib, just make sure you have:
+
+- a little-endian computer (x86 or X86-64)
+- libjpeg-8
+
+Compilation process is as easy as:
+
+make libx3f
+make x3f_show
+
+To launch x3f_show from the current directory, please use the following 
+command:
+
+LD_LIBRARY_PATH=./ ./x3f_show /path/to/any/x3f/file
