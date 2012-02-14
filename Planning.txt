@@ -1,0 +1,70 @@
+- Use Rolkar algo to load x3f, as he's the one that can decode dps and sd15/1 x3f.
+- Give access to the raw data: this is meant to be a x3f decoding only library
+- Give access to all sections in x3f file (CMAF, IMAx, PROP, Header, etc)
+- Correct the BadPixels
+- Provide a full EXIF struct for ease of use (maybe instead the PROP directory?)
+- No further processing of image data will be done; let outer program choose the way they want to process the image
+- Document the format as best as possible
+
+TRUE HEADER
+Offset	Length	Item			Notes
+0	8	seed			contains 4 values (512,512,512,0)
+8	36?	TRUE huffman table
+44	12	planes sizes		TRUE planes sizes (3 32bit values)
+
+Each color is encoded separately? each color is represented by a plane. This means we probably have all red values, then all green values, then all blue values.
+
+
+CHANGE IN THE WAY THE LIBRARY LOADS X3F:
+
+- We will make the library little-endian only. All popular procs nowadays are little-endian. This way, we should just call an fread on each DIR_ENTRY and we should have our full structures, properly filled with correct values.
+- Also it will make it easier to write x3f files if needed (or better x3t files: x3f files with some compatible extensions).
+- DIR_ENTRY should be parsed in reversed order, so we take care of the last recorded one.
+- We will quickly give some infos about the images and properties found in the file: this way, the user will be able to choose the preview he would like to load.
+- EXIF struct is mandatory.
+
+
+
+Cinepaint adjustment for rolkar tiff dump:
+balance des couleurs:    ombres => -6 36 25
+		      1/2 teintes => -6 -45 -6
+		      vifs => -6 -36 -9
+
+TPhoto:
+
+Make a nice interface to load raw x3f, process them the best we can, and save as jpeg, png (8/16), tiff (8/16), x3f(? maybe a modified for my own purpose x3f format as the format is quiet permissive).
+
+Use Wavelet Denoise
+Provide a per channel view and adjustment
+	we need to implement layers groups
+	   layers opacity should go from 0 to 200%
+	main group should be RGB and contain 3 layers (red, blue, green)
+Crop, resize, rotate, flip
+Provide a masking tool (per zone adjustment)
+	adjustment should be done on a layer group or on a single layer
+	we need to implement a selection tool (brush, free selection?)
+	selection should have an adjustable softness edge
+Provide 16 bits per channel image support only
+
+
+We will need a huffman decoding function
+
+USAGE of libx3f:
+
+struct X3F *x3f = x3f_init 
+       => initialize the main x3f struct and verify that the file is a FOVb file. If yes, returns a pointer to the struct, NULL otherwise.
+       Could be used to check files are FOVb x3fs.
+
+x3f->header = x3f_parse_header
+       => create the X3F_HEADER struct, and fill it with values founded in x3f file
+
+x3f->dir_section=x3f_read_dir_section
+       => create the DIR_SECTION struct, and fill it with values founded in x3f file
+       It should not be necessary to store this but if we want to write x3f files.
+
+for (i =x3f->dir_section->dir_entry_count;i>0;i--)
+    x3f->dir_entry[i-1]=read_dir_entry
+done
+       => we create DIR_ENTRY struct for each entry in the directory
+       We should parse the directory entry list backward to take care of redondant entries ability
+
