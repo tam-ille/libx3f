@@ -1,0 +1,20 @@
+dcraw interpolation:
+
+CAMF blocks used:
+- DarkShieldColRange
+- PostPolyMatrix
+- SaturationLevel
+- KeepImageArea
+- ActiveImageArea
+- ChromaDQ
+- ColorDQ (or ColorDQcamRGB) 
+- ColumnFilter
+- DarkDrift (if not found, computed from DarkShieldBottom and DarkShieldTop
+- CamToXYZ_*** (use header WBString to find the WhiteBalanceIlluminants block)
+- WBCorrections_*** (same as above to find the block)
+- ***RGBNeutral (same as above to find the block; but x3f seems to embbed only one RGBNeutral)
+- SpatialGain
+- BadPixels
+
+dcraw first compute WB. It takes WBIlluminants ([3][3] matrix) and multiply it with WBCorrections (also [3][3] matrix). From there, it compute a diag[3][3] matrix which then is used to compute a div[3].
+But the div[3] is replaced by ***RGBNeutral if found.

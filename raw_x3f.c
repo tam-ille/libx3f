@@ -394,7 +394,7 @@ CAMF_LIST_ENTRY *X3F_fill_camf_list(uint dataSize, uint8_t *camf_data, CAMF_LIST
       uint i=0/* , c=0,v */;
       uint8_t*cmbmPtr=dataPtr+CMb_entry->dataOffset;
       uint32_t matrixDimension, dataStartOffset, dataType, valuesCount=1;
-      uint32_t *planeElements;
+      int32_t *planeElements;
       MATRIX_INFOS *matrixInfos;
       MATRIX *matrix;
 
@@ -402,7 +402,7 @@ CAMF_LIST_ENTRY *X3F_fill_camf_list(uint dataSize, uint8_t *camf_data, CAMF_LIST
       matrixDimension=*(uint32_t *)(cmbmPtr+4);
       dataStartOffset=*(uint32_t *)(cmbmPtr+8);
 
-      new_list_entry->count=matrixDimension;
+       new_list_entry->count=matrixDimension;
       /* Do we need to keep infos such as name of arrays? */
       matrixInfos=(MATRIX_INFOS *)(cmbmPtr+12);
 
@@ -1016,6 +1016,669 @@ int X3F_decode_raw(IMA *raw){
     return 1;
   }
   return 0;
+}
+
+CAMF_LIST_ENTRY *find_camf_block(const char *name, CAMF_LIST_ENTRY *camf_list){
+  CAMF_LIST_ENTRY *entry;
+
+  for (entry=camf_list;entry!=NULL;entry=entry->next){
+    if (!strcmp(entry->name, name))
+      break;
+  }
+  return entry;
+
+}
+
+#define FORC(cnt) for (c=0; c < cnt; c++)
+#define FORC3 FORC(3)
+
+void X3F_compute_darkdrift(float ddft[3][3][2], X3F *x3f) {
+  /* We first check if a darkdrift matrix is to be found in the camf datas */
+  CAMF_LIST_ENTRY *darkdrift;
+  CMbM *cmbm;
+  uint16_t (*image)[3]=(uint16_t (*)[3])(((IMA*)(x3f->raw->datas))->imageData);
+  uint c,d, i, j=0, row, col, width;
+
+  width=x3f->header->columns;
+
+  if ((darkdrift=find_camf_block("DarkDrift", x3f->camf_list))){
+	cmbm=(CMbM *)darkdrift->value;
+
+	for (d=1; d<3; d++)
+	  FORC3
+		for (i=0; i<2; i++)
+		 ddft[d][c][i]=cmbm->matrix[j++].f;
+/*   we just have to take the matrix from this entry */
+  } else {
+    /* compute the darkdrift from darkshieldtop and darkshieldbottom */
+    for (i=0; i < 2; i++) {
+	  if ((darkdrift=find_camf_block(i ? "DarkShieldBottom":"DarkShieldTop", x3f->camf_list))){
+		cmbm=(CMbM *)darkdrift->value;
+		for (row = cmbm->matrix[1].ui_32; row <= cmbm->matrix[3].ui_32; row++)
+		  for (col = cmbm->matrix[0].ui_32; col <= cmbm->matrix[2].ui_32; col++)
+			FORC3 ddft[i+1][c][1] +=  image[row*width+col][c];
+		FORC3 ddft[i+1][c][1] /= (cmbm->matrix[3].ui_32-cmbm->matrix[1].ui_32+1) * (cmbm->matrix[2].ui_32-cmbm->matrix[0].ui_32+1);
+	  }
+    }
+  }
+  return;
+}
+
+char *foveon_get_param(const char *blockName, const char *name, CAMF_LIST_ENTRY *camf_list){
+  CAMF_LIST_ENTRY *entry;
+  PARAMETERS *params;
+  uint i;
+
+  entry=find_camf_block(blockName, camf_list);
+  if (entry !=NULL){
+    params=(PARAMETERS *)entry->value;
+    for (i=0;i<entry->count;i++){
+      if (!strcmp(params[i].name,name))
+	return params[i].value;
+    }
+  }
+  return NULL;
+}
+
+CMbM *foveon_get_matrix(const char *blockName, CAMF_LIST_ENTRY *camf_list){
+  CAMF_LIST_ENTRY *entry;
+  CMbM *cmbm;
+
+  entry=find_camf_block(blockName, camf_list);
+  if (entry !=NULL){
+    cmbm=(CMbM *)entry->value;
+    return cmbm;
+  }
+  return NULL;
+}
+
+int16_t *foveon_make_curve (double max, double mul, double filt)
+{
+  short *curve;
+  unsigned i, size;
+  double x;
+
+  if (!filt) filt = 0.8;
+  size = 4*M_PI*max / filt;
+  if (size == UINT_MAX) size--;
+  curve = (short *) calloc (size+1, sizeof *curve);
+/*   merror (curve, "foveon_make_curve()"); */
+  curve[0] = size;
+  for (i=0; i < size; i++) {
+    x = i*filt/max/4;
+    curve[i+1] = (cos(x)+1)/2 * tanh(i*filt/mul) * mul + 0.5;
+  }
+  return curve;
+}
+
+void foveon_make_curves
+	(int16_t **curvep, float dq[3], float div[3], float filt)
+{
+  double mul[3], max=0;
+  int c;
+
+  FORC3 mul[c] = dq[c]/div[c];
+  FORC3 if (max < mul[c]) max = mul[c];
+  FORC3 curvep[c] = foveon_make_curve (max, mul[c], filt);
+}
+
+int foveon_apply_curve (short *curve, int i)
+{
+  if (abs(i) >= curve[0]) return 0;
+  return i < 0 ? -curve[1-i] : curve[1+i];
+}
+
+float foveon_avg (uint16_t *pix, uint range[2], float cfilt)
+{
+  uint i;
+  float val, min=FLT_MAX, max=-FLT_MAX, sum=0;
+
+  for (i=range[0]; i <= range[1]; i++) {
+    sum += val = pix[i*4] + (pix[i*4]-pix[(i-1)*4]) * cfilt;
+    if (min > val) min = val;
+    if (max < val) max = val;
+  }
+  if (range[1] - range[0] == 1) return sum/2;
+  return (sum - min - max) / (range[1] - range[0] - 1);
+}
+
+void X3F_compute_wbdiv(float div[3], const char *wbstring, CAMF_LIST_ENTRY*camf_list){
+  CMbM *cmbm;
+  char str[64];
+  const char *cp;
+  float cam_xyz[3][3], correct[3][3];
+  float last[3][3], diag[3][3], num;
+  int i, j, k, c;
+
+  /* should we go now to XYZ colorspace? */
+  /* try this */
+  /* the transformation should be */
+  /* x=cam_xyz[0][0]*R+cam_xyz[0][1]*G+cam_xyz[0][2]*B */
+  /* y=cam_xyz[1][0]*R+cam_xyz[1][1]*G+cam_xyz[1][2]*B  */
+  /* z=cam_xyz[2][0]*R+cam_xyz[2][1]*G+cam_xyz[2][2]*B  */
+
+/*   X3F_cam_to_xyz(); */
+
+  sprintf (str, "%sRGBNeutral", wbstring);
+  if (!(cmbm=foveon_get_matrix(str, camf_list))) {
+    /* compute the div only if %sRGBNeutral was not found */
+    /* Find the camera WhiteBalance */
+    if (!(cp = foveon_get_param ("WhiteBalanceIlluminants", wbstring, camf_list)))
+	  printf ("Invalid white balance \"%s\"\n", wbstring);
+    cmbm=foveon_get_matrix (cp, camf_list);
+	for (i=0,k=0; i<3; i++)
+	  for (j=0; j<3; j++)
+		cam_xyz[i][j]=cmbm->matrix[k++].f;
+	
+	for (row=0; row<width; row++){
+	  pix = image[row*width];
+	  for (col=0; col<width; col++)
+		FORC3 interpolation->pix[c]=cam_xyz[c][0]*pix[0]+cam_xyz[c][1]*pix[1]+cam_xyz[c][2]*pix[2];
+	}
+
+    cmbm=foveon_get_matrix (foveon_get_param ("WhiteBalanceCorrections",
+											  wbstring, camf_list), camf_list);
+	for (i=0,k=0; i<3; i++)
+	  for (j=0; j<3; j++)
+		correct[i][j]=cmbm->matrix[k++].f;
+    
+	memset (last, 0, sizeof last);
+    for (i=0; i < 3; i++)
+      for (j=0; j < 3; j++)
+		FORC3 last[i][j] += correct[i][c] * cam_xyz[c][j];
+
+#define LAST(x,y) last[(i+x)%3][(c+y)%3]
+    for (i=0; i < 3; i++)
+      FORC3 diag[c][i] = LAST(1,1)*LAST(2,2) - LAST(1,2)*LAST(2,1);
+#undef LAST
+    /* where do those constants come from? */
+/*     FORC3 div[c] = diag[c][0]*0.3127 + diag[c][1]*0.329 + diag[c][2]*0.3583; */
+    FORC3 div[c] = diag[c][0]*0.304 + diag[c][1]*0.346 + diag[c][2]*0.35;
+    /* div[] has been computed from WBIlluminants and WBCorrections */
+  } else {
+	FORC3 div[c]=cmbm->matrix[c].f;
+  }
+
+  /* this is needed only if max div >1.0 */
+  num = 0;
+  FORC3 if (num < div[c]) num = div[c]; /* this place the max value of div[] in num */
+  FORC3 div[c] /= num; /* this make the max value of div[] to 1, others may vary from 0 to 1 */
+  return;
+}
+
+void X3F_compute_black_point(X3F_MATRIX_TRANSFORM *interpolation, uint width, uint height, uint16_t (*image)[3]){
+  uint row, col, c, i;
+  float last[3][3], fsum[3], val;
+  int total[4];
+
+#define ddft interpolation->ddft
+#define black interpolation->black
+#define dscr interpolation->dscr
+#define cfilt interpolation->cfilt
+
+  black = (float (*)[3]) calloc (height, sizeof *black);
+  for (row=0; row < height; row++) {
+    for (i=0; i < 6; i++)
+      ddft[0][0][i] = ddft[1][0][i] +
+	row / (height-1.0) * (ddft[2][0][i] - ddft[1][0][i]);
+    FORC3 black[row][c] =
+ 	( foveon_avg (image[row*width]+c, dscr[0], cfilt) +
+	  foveon_avg (image[row*width]+c, dscr[1], cfilt) * 3
+	  - ddft[0][c][0] ) / 4 - ddft[0][c][1];
+  }
+  memcpy (black, black+8, sizeof *black*8);
+  memcpy (black+height-11, black+height-22, 11*sizeof *black);
+  /* reset of last */
+  memcpy (last, black, sizeof last);
+
+  for (row=1; row < height-1; row++) {
+    FORC3 if (last[1][c] > last[0][c]) {
+	if (last[1][c] > last[2][c])
+	  black[row][c] = (last[0][c] > last[2][c]) ? last[0][c]:last[2][c];
+      } else
+	if (last[1][c] < last[2][c])
+	  black[row][c] = (last[0][c] < last[2][c]) ? last[0][c]:last[2][c];
+    memmove (last, last+1, 2*sizeof last[0]);
+    memcpy (last[2], black[row+1], sizeof last[2]);
+  }
+  FORC3 black[row][c] = (last[0][c] + last[1][c])/2;
+  FORC3 black[0][c] = (black[1][c] + black[3][c])/2;
+
+  val = 1 - exp(-1/24.0);
+  memcpy (fsum, black, sizeof fsum);
+  for (row=1; row < height; row++)
+    FORC3 fsum[c] += black[row][c] =
+	(black[row][c] - black[row-1][c])*val + black[row-1][c];
+  memcpy (last[0], black[height-1], sizeof last[0]);
+  FORC3 fsum[c] /= height;
+  for (row = height; row--; )
+    FORC3 last[0][c] = black[row][c] =
+	(black[row][c] - fsum[c] - last[0][c])*val + last[0][c];
+
+  memset (total, 0, sizeof total);
+  for (row=2; row < height; row+=4)
+    for (col=2; col < width; col+=4) {
+      FORC3 total[c] +=  image[row*width+col][c];
+      total[3]++;
+    }
+  for (row=0; row < height; row++)
+    FORC3 black[row][c] += fsum[c]/2 + total[c]/(total[3]*100.0);
+/*   black is computed for each row */
+/*   printf("Ready to interpolate?\n"); */
+
+#undef ddft
+#undef black
+#undef dscr
+#undef cfilt
+}
+
+void X3F_dcraw_interpolate_raw(X3F *x3f){
+  /* what if 2 adjacent pixels are weird? */
+  static const short hood[] = { -1,-1, -1,0, -1,1, 0,-1, 0,1, 1,-1, 1,0, 1,1 };
+  static const int rgb_cam[3][3]={{1,0,0}, {0,1,0},{0,0,1}};
+
+  short prev[3], *curve[8], (*shrink)[3];
+  uint16_t *pix;
+  float cfilt=0;
+  float last[3][3], trans[3][3], diag[3][3], ddft[3][3][2], div[3];
+  float cam_xyz[3][3], correct[3][3], sgain[33*49][3], chroma_dq[3], color_dq[3], ppm[3][3][3];
+  float (*sgrow)[3];
+  float fsum[3], val, frow, num;
+  int row, width, height, col, c, i, j, k, diff, sgx, irow, sum, min, max, limit;
+  int dscr[2][2], dstb[4];
+  int (*smrow[7])[3], total[4], ipix[3];
+  int work[3][3], smlast, smred, smred_p=0, dev[3];
+  uint16_t satlev[3], keep[4], active[4];
+  int32_t *dim, *badpix;
+  double dsum=0, trsum[3];
+  char str[128];
+  const char* cp;
+  IMA *ima=(IMA *)x3f->raw->datas;
+  CAMF_LIST_ENTRY *camf_list=x3f->camf_list;
+  uint16_t (*image)[3]=(uint16_t (*)[3])ima->imageData;
+  CMbM *cmbm;
+  X3F_MATRIX_TRANSFORM *interpolation=x3f->interpolation;
+
+  fprintf (stderr,_("Foveon interpolation...\n"));
+
+  width=ima->columns;
+  height=ima->rows;
+
+  /* foveon_fixed sets a copy of the matrix in the first arg ptr */
+  /* foveon_camf_param returns TRUE if the CMbP is found, FALSE otherwise */
+  /* we need to replace foveon_fixed with a func returning the camf matrix */
+  /* we need to replace foveon_camf_param with find_camf_matrix */
+
+/*   foveon_get_matrix(dscr, "DarkShieldColRange", camf_list); */
+/*   dscr=(MATRIX[2][2])cmbm->matrix; */
+/*   foveon_get_matrix (ppm[0][0], "PostPolyMatrix", camf_list); /\* not present in TRUE camf *\/ */
+/*   foveon_get_matrix (satlev, "SaturationLevel", camf_list); */
+/*   foveon_get_matrix (keep, "KeepImageArea", camf_list); */
+/*   foveon_get_matrix (active, "ActiveImageArea", camf_list); */
+
+/*   if (foveon_camf_param ("IncludeBlocks", "ColumnFilter")) */ /* not present in TRUE camf; have ColumnFilterRGB and ColumnFilterSquareRGB instead */
+/*   if (foveon_get_matrix (&cfilt, "ColumnFilter", camf_list)){ */
+    /* we should compute cfilt from ColumnFilterRGB which is float[3]
+	   matrix (values so far are 0) */
+/*     X3F_MSG("No ColumnFilter entry\n"); */
+/*   } */
+  if (!(interpolation=malloc(sizeof(*interpolation)))){
+	X3F_MEM_ERROR("X3F_dcraw_interpolate_raw", "interpolation");
+	return;
+  }
+  interpolation->cfilt=0.8;
+
+
+  memset (interpolation->ddft, 0, sizeof interpolation->ddft);
+  printf("Computing DarkDrift\n");
+  X3F_compute_darkdrift(interpolation->ddft, x3f);
+  for (j=0; j<3; j++)
+	for (c=0; c<3; c++)
+	  for (i=0; i<2; i++)
+		printf("ddft[%d][%d][%d]: %f\n", j, c, i, interpolation->ddft[j][c][i]);
+
+  cmbm=(CMbM*)((find_camf_block("DarkShieldColRange", camf_list))->value);
+  for (c=0,j=0; c<2; c++)
+	for (i=0; i<2; i++){
+	  interpolation->dscr[c][i]=cmbm->matrix[j++].ui_32;
+	  printf("dscr[%d][%d]: %d\n", c, i, interpolation->dscr[c][i]);
+/* 	  printf("matrix[%d][%d]: %d\n", c, i, cmbm->matrix[c*2+i].ui_32); */
+	}
+
+  printf("Computing white balance divider\n");
+  X3F_compute_wbdiv(interpolation->wbdiv, (char*)x3f->header->whiteBalanceString, camf_list);
+  FORC3 printf("wbdiv[%d]: %f\n", c, interpolation->wbdiv[c]);
+
+  /* rgb_cam is identity matrix */
+  /* what is trans? */
+  /* it's used to modify last then last is used to recompute trans values */
+  memset (trans, 0, sizeof trans);
+  for (i=0; i < 3; i++)
+    for (j=0; j < 3; j++)
+      FORC3 trans[i][j] += rgb_cam[i][c] * last[c][j] * interpolation->wbdiv[j];
+  FORC3 trsum[c] = trans[c][0] + trans[c][1] + trans[c][2];
+  dsum = (6*trsum[0] + 11*trsum[1] + 3*trsum[2]) / 20;
+  for (i=0; i < 3; i++)
+    FORC3 last[i][c] = trans[i][c] * dsum / trsum[i];
+  memset (trans, 0, sizeof trans);
+  for (i=0; i < 3; i++)
+    for (j=0; j < 3; j++)
+      FORC3 trans[i][j] += (i==c ? 32 : -1) * last[c][j] / 30;
+  /* trans will be used for colorspace transformation */
+
+  /* Here curves are computed */
+  printf("Making curves\n");
+  if (!(cmbm=foveon_get_matrix ("ColorDQ", camf_list)))
+	cmbm=foveon_get_matrix("ColorDQCamRGB", camf_list);
+  FORC3 color_dq[c]=cmbm->matrix[c].f;
+  foveon_make_curves (interpolation->curve, color_dq, interpolation->wbdiv, interpolation->cfilt);
+
+  cmbm=foveon_get_matrix  ("ChromaDQ", camf_list);
+  FORC3 chroma_dq[c]=cmbm->matrix[c].f;
+  FORC3 chroma_dq[c] /= 3;
+  foveon_make_curves (interpolation->curve+3, chroma_dq, interpolation->wbdiv, interpolation->cfilt);
+  FORC3 dsum += chroma_dq[c] / interpolation->wbdiv[c];
+  curve[6] = foveon_make_curve (dsum, dsum, cfilt);
+  curve[7] = foveon_make_curve (dsum*2, dsum*2, cfilt);
+
+  /* spatial gain */
+/*   cp = foveon_get_param ("SpatialGainTable",  (char*)x3f->header->whiteBalanceString, camf_list); */
+/*   printf("%s\n", cp); */
+/*   cmbm=foveon_get_matrix(cp?cp:"SpatialGain", camf_list); */
+/*   for (i=0, k=0; i<33*49;i++) */
+/* /\* 	for (j=0; j<49; j++) *\/ */
+/* 	  FORC3 sgain[i][c]=cmbm->matrix[k++].f; */
+/*   dim=cmbm->planeElements; */
+/*   sgrow = (float (*)[3]) calloc (dim[1], sizeof *sgrow); */
+/*   sgx = (width + dim[1]-2) / (dim[1]-1); */
+
+  /* Black */
+/*   X3F_compute_black_point(interpolation,width, height, image); */
+/*   printf("Black\n"); */
+
+  /* START OF INTERPOLATION */
+/*   for (row=0; row < height; row++) { */
+/*     for (i=0; i < 6; i++) */
+/*       interpolation->ddft[0][0][i] = interpolation->ddft[1][0][i] + */
+/* 	row / (height-1.0) * (interpolation->ddft[2][0][i] - interpolation->ddft[1][0][i]); */
+/*     /\* pix point to start of row *\/ */
+/*     pix = image[row*width]; */
+/*     memcpy (prev, pix, sizeof prev); */
+/* /\*     frow = row / (height-1.0) * (dim[0]-1); *\/ */
+/* /\*     if ((irow = frow) == dim[0]-1) irow--; *\/ */
+/* /\*     frow -= irow; *\/ */
+/* /\*     for (i=0; i < dim[1]; i++) *\/ */
+/* /\*       FORC3 sgrow[i][c] = sgain[ irow*dim[1]+i][c] * (1-frow) + *\/ */
+/* /\* 			  sgain[(irow+1)*dim[1]+i][c] * frow; *\/ */
+/*     for (col=0; col < width; col++) { */
+/*       /\* FIRST ADJUST BLACK *\/ */
+/*       FORC3 { */
+/* 		diff = pix[c] - prev[c]; */
+/* 		prev[c] = pix[c]; */
+/* 		ipix[c] = pix[c] + floor ((diff + (diff*diff >> 14)) * interpolation->cfilt */
+/* 								  - interpolation->ddft[0][c][1] - interpolation->ddft[0][c][0] * ((float) col/width - 0.5) */
+/* 								  - interpolation->black[row][c] ); */
+/*       } */
+/* /\*       THEN ? *\/ */
+/*       FORC3 { */
+/* /\* 		work[0][c] = ipix[c] * ipix[c] >> 14; *\/ */
+/* /\* 		work[2][c] = ipix[c] * work[0][c] >> 14; *\/ */
+/* /\* 		work[1][2-c] = ipix[(c+1) % 3] * ipix[(c+2) % 3] >> 14; *\/ */
+/* /\*       } *\/ */
+/* /\*       /\\* APPLY SPATIAL GAIN (use PostPolyMatrix) *\\/ *\/ */
+/* /\* 	  cmbm=foveon_get_matrix("PostPolyMatrix", camf_list); *\/ */
+/* /\* 	  for (i=0,k=0; i<3; i++) *\/ */
+/* /\* 		for (j=0; j<3; j++) *\/ */
+/* /\* 		  FORC3 ppm[i][j][c]=cmbm->matrix[k++].f; *\/ */
+/* /\*       FORC3 { *\/ */
+/* /\* 	for (val=i=0; i < 3; i++) *\/ */
+/* /\* 	  for (  j=0; j < 3; j++) *\/ */
+/* /\* 	    val += ppm[j][i][c] * work[i][j]; *\/ */
+/* /\* 	ipix[c] = floor ((ipix[c] + floor(val)) * *\/ */
+/* /\* 		( sgrow[col/sgx  ][c] * (sgx - col%sgx) + *\/ */
+/* /\* 		  sgrow[col/sgx+1][c] * (col%sgx) ) / sgx / div[c]); *\/ */
+/* /\* 	if (ipix[c] > 32000) ipix[c] = 32000; *\/ */
+/* 		pix[c] = ipix[c]; */
+/* 	  } */
+/*       pix += 3; */
+/* 	} */
+/*   } */
+  /* All pixels have been interpolated */
+/*   free (black); */
+/*   free (sgrow); */
+/* /\*   free (sgain); *\/ */
+
+/* /\*   /\\* correction of badPixels (averaging neighboor pixels) *\\/ *\/ */
+/* /\*   if ((badpix = (unsigned int *) foveon_get_matrix (dim, "BadPixels", camf_list))) { *\/ */
+/* /\*     for (i=0; i < dim[0]; i++) { *\/ */
+/* /\*       col = (badpix[i] >> 8 & 0xfff) - keep[0]; *\/ */
+/* /\*       row = (badpix[i] >> 20       ) - keep[1]; *\/ */
+/* /\*       if ((unsigned)(row-1) > height-3 || (unsigned)(col-1) > width-3) *\/ */
+/* /\* 	continue; *\/ */
+/* /\*       memset (fsum, 0, sizeof fsum); *\/ */
+/* /\*       for (sum=j=0; j < 8; j++) *\/ */
+/* /\* 	if (badpix[i] & (1 << j)) { *\/ */
+/* /\* 	  FORC3 fsum[c] += (short) *\/ */
+/* /\* 		image[(row+hood[j*2])*width+col+hood[j*2+1]+c]; *\/ */
+/* /\* 	  sum++; *\/ */
+/* /\* 	} *\/ */
+/* /\*       if (sum) FORC3 image[row*width+col+c] = fsum[c]/sum; *\/ */
+/* /\*     } *\/ */
+/* /\*     free (badpix); *\/ */
+/* /\*   } *\/ */
+
+
+/*   /\* Smoothing and sharpening (only red channel) *\/ */
+
+/*   /\* Array for 5x5 Gaussian averaging of red values *\/ */
+/* /\*   smrow[6] = (int (*)[3]) calloc (width*5, sizeof **smrow); *\/ */
+/* /\* /\\*   merror (smrow[6], "foveon_interpolate()"); *\\/ *\/ */
+/* /\*   for (i=0; i < 5; i++) *\/ */
+/* /\*     smrow[i] = smrow[6] + i*width; *\/ */
+
+/* /\*   /\\* Sharpen the reds against these Gaussian averages *\\/ *\/ */
+/* /\*   for (smlast=-1, row=2; row < height-2; row++) { *\/ */
+/* /\*     while (smlast < row+2) { *\/ */
+/* /\*       for (i=0; i < 6; i++) *\/ */
+/* /\* 	smrow[(i+5) % 6] = smrow[i]; *\/ */
+/* /\*       pix = image[++smlast*width+2]; *\/ */
+/* /\*       for (col=2; col < width-2; col++) { *\/ */
+/* /\* 	smrow[4][col][0] = *\/ */
+/* /\* 	  (pix[0]*6 + (pix[-4]+pix[4])*4 + pix[-8]+pix[8] + 8) >> 4; *\/ */
+/* /\* 	pix += 3; *\/ */
+/* /\*       } *\/ */
+/* /\*     } *\/ */
+/* /\*     pix = image[row*width+2]; *\/ */
+/* /\*     for (col=2; col < width-2; col++) { *\/ */
+/* /\*       smred = ( 6 *  smrow[2][col][0] *\/ */
+/* /\* 	      + 4 * (smrow[1][col][0] + smrow[3][col][0]) *\/ */
+/* /\* 	      +      smrow[0][col][0] + smrow[4][col][0] + 8 ) >> 4; *\/ */
+/* /\*       if (col == 2) *\/ */
+/* /\* 	smred_p = smred; *\/ */
+/* /\*       i = pix[0] + ((pix[0] - ((smred*7 + smred_p) >> 3)) >> 3); *\/ */
+/* /\*       if (i > 32000) i = 32000; *\/ */
+/* /\*       pix[0] = i; *\/ */
+/* /\*       smred_p = smred; *\/ */
+/* /\*       pix += 3; *\/ */
+/* /\*     } *\/ */
+/* /\*   } *\/ */
+
+  /* Adjust the brighter pixels for better linearity */
+  /* USE: SatLevel */
+  min = 0xffff;
+  cmbm=foveon_get_matrix("SaturationLevel", camf_list);
+  FORC3 satlev[c]=cmbm->matrix[c].ui_16;
+  FORC3 {
+    i = satlev[c];
+	printf("SaturationLevel[%d]: %d\n", c, satlev[c]);
+    if (min > i) min = i;
+  }
+  limit = min * 9 >> 4;
+  for (pix=image[0]; pix < image[height*width]; pix+=3) {
+    if (pix[0] <= limit || pix[1] <=  limit || pix[2] <= limit)
+      continue;
+    min = max = pix[0];
+    for (c=1; c < 3; c++) {
+      if (min > pix[c]) min = pix[c];
+      if (max < pix[c]) max = pix[c];
+    }
+    if (min >= limit*2) {
+      pix[0] = pix[1] = pix[2] = max;
+    } else {
+/* 	  printf("Here\n"); */
+      i = 0x4000 - ((min - limit) << 14) / limit;
+      i = 0x4000 - (i*i >> 14);
+      i = i*i >> 14;
+      FORC3 pix[c] += (max - pix[c]) * i >> 14;
+    }
+  }
+
+/*   /\* Denoising *\/ */
+/*   /\* Use: curve[7] and curve[6] (relative to chromaDQ)*\/ */
+/* /\* */
+/*    Because photons that miss one detector often hit another, */
+/*    the sum R+G+B is much less noisy than the individual colors. */
+/*    So smooth the hues without smoothing the total. */
+/*  *\/ */
+/* /\*   for (smlast=-1, row=2; row < height-2; row++) { *\/ */
+/* /\*     while (smlast < row+2) { *\/ */
+/* /\*       for (i=0; i < 6; i++) *\/ */
+/* /\* 	smrow[(i+5) % 6] = smrow[i]; *\/ */
+/* /\*       pix = image[++smlast*width+2]; *\/ */
+/* /\*       for (col=2; col < width-2; col++) { *\/ */
+/* /\* 	FORC3 smrow[4][col][c] = (pix[c-4]+2*pix[c]+pix[c+4]+2) >> 2; *\/ */
+/* /\* 	pix += 3; *\/ */
+/* /\*       } *\/ */
+/* /\*     } *\/ */
+/* /\*     pix = image[row*width+2]; *\/ */
+/* /\*     for (col=2; col < width-2; col++) { *\/ */
+/* /\*       FORC3 dev[c] = -foveon_apply_curve (curve[7], pix[c] - *\/ */
+/* /\* 	((smrow[1][col][c] + 2*smrow[2][col][c] + smrow[3][col][c]) >> 2)); *\/ */
+/* /\*       sum = (dev[0] + dev[1] + dev[2]) >> 3; *\/ */
+/* /\*       FORC3 pix[c] += dev[c] - sum; *\/ */
+/* /\*       pix += 3; *\/ */
+/* /\*     } *\/ */
+/* /\*   } *\/ */
+/* /\*   for (smlast=-1, row=2; row < height-2; row++) { *\/ */
+/* /\*     while (smlast < row+2) { *\/ */
+/* /\*       for (i=0; i < 6; i++) *\/ */
+/* /\* 	smrow[(i+5) % 6] = smrow[i]; *\/ */
+/* /\*       pix = image[++smlast*width+2]; *\/ */
+/* /\*       for (col=2; col < width-2; col++) { *\/ */
+/* /\* 	FORC3 smrow[4][col][c] = *\/ */
+/* /\* 		(pix[c-8]+pix[c-4]+pix[c]+pix[c+4]+pix[c+8]+2) >> 2; *\/ */
+/* /\* 	pix += 3; *\/ */
+/* /\*       } *\/ */
+/* /\*     } *\/ */
+/* /\*     pix = image[row*width+2]; *\/ */
+/* /\*     for (col=2; col < width-2; col++) { *\/ */
+/* /\*       for (total[3]=375, sum=60, c=0; c < 3; c++) { *\/ */
+/* /\* 	for (total[c]=i=0; i < 5; i++) *\/ */
+/* /\* 	  total[c] += smrow[i][col][c]; *\/ */
+/* /\* 	total[3] += total[c]; *\/ */
+/* /\* 	sum += pix[c]; *\/ */
+/* /\*       } *\/ */
+/* /\*       if (sum < 0) sum = 0; *\/ */
+/* /\*       j = total[3] > 375 ? (sum << 16) / total[3] : sum * 174; *\/ */
+/* /\*       FORC3 pix[c] += foveon_apply_curve (curve[6], *\/ */
+/* /\* 		((j*total[c] + 0x8000) >> 16) - pix[c]); *\/ */
+/* /\*       pix += 3; *\/ */
+/* /\*     } *\/ */
+/* /\*   } *\/ */
+
+/*   /\* Use: curve[0]->curve[2] (colorDQ) *\/ */
+/*   /\* Transform the image to a different colorspace *\/ */
+/*   for (pix=image[0]; pix < image[height*width]; pix+=3) { */
+/*     FORC3 pix[c] -= foveon_apply_curve (interpolation->curve[c], pix[c]); */
+/*     sum = (pix[0]+pix[1]+pix[1]+pix[2]) >> 2; */
+/*     FORC3 pix[c] -= foveon_apply_curve (interpolation->curve[c], pix[c]-sum); */
+/*     FORC3 { */
+/*       for (dsum=i=0; i < 3; i++) */
+/* 	dsum += trans[c][i] * pix[i]; */
+/*       if (dsum < 0)  dsum = 0; */
+/*       if (dsum > 24000) dsum = 24000; */
+/*       ipix[c] = dsum + 0.5; */
+/*     } */
+/*     FORC3 pix[c] = ipix[c]; */
+/*   } */
+
+/*   /\* Smooth the image bottom-to-top and save at 1/4 scale *\/ */
+/* /\*   shrink = (short (*)[3]) calloc ((width/4) * (height/4), sizeof *shrink); *\/ */
+/* /\* /\\*   merror (shrink, "foveon_interpolate()"); *\\/ *\/ */
+/* /\*   for (row = height/4; row--; ) *\/ */
+/* /\*     for (col=0; col < width/4; col++) { *\/ */
+/* /\*       ipix[0] = ipix[1] = ipix[2] = 0; *\/ */
+/* /\*       for (i=0; i < 4; i++) *\/ */
+/* /\* 	for (j=0; j < 4; j++) *\/ */
+/* /\* 	  FORC3 ipix[c] += image[(row*4+i)*width+col*4+j][c]; *\/ */
+/* /\*       FORC3 *\/ */
+/* /\* 	if (row+2 > height/4) *\/ */
+/* /\* 	  shrink[row*(width/4)+col][c] = ipix[c] >> 4; *\/ */
+/* /\* 	else *\/ */
+/* /\* 	  shrink[row*(width/4)+col][c] = *\/ */
+/* /\* 	    (shrink[(row+1)*(width/4)+col][c]*1840 + ipix[c]*141 + 2048) >> 12; *\/ */
+/* /\*     } *\/ */
+/* /\*   /\\* From the 1/4-scale image, smooth right-to-left *\\/ *\/ */
+/* /\*   for (row=0; row < (height & ~3); row++) { *\/ */
+/* /\*     ipix[0] = ipix[1] = ipix[2] = 0; *\/ */
+/* /\*     if ((row & 3) == 0) *\/ */
+/* /\*       for (col = width & ~3 ; col--; ) *\/ */
+/* /\* 	FORC3 smrow[0][col][c] = ipix[c] = *\/ */
+/* /\* 	  (shrink[(row/4)*(width/4)+col/4][c]*1485 + ipix[c]*6707 + 4096) >> 13; *\/ */
+
+/* /\*   /\\* Then smooth left-to-right *\\/ *\/ */
+/* /\*     ipix[0] = ipix[1] = ipix[2] = 0; *\/ */
+/* /\*     for (col=0; col < (width & ~3); col++) *\/ */
+/* /\*       FORC3 smrow[1][col][c] = ipix[c] = *\/ */
+/* /\* 	(smrow[0][col][c]*1485 + ipix[c]*6707 + 4096) >> 13; *\/ */
+
+/* /\*   /\\* Smooth top-to-bottom *\\/ *\/ */
+/* /\*     if (row == 0) *\/ */
+/* /\*       memcpy (smrow[2], smrow[1], sizeof **smrow * width); *\/ */
+/* /\*     else *\/ */
+/* /\*       for (col=0; col < (width & ~3); col++) *\/ */
+/* /\* 	FORC3 smrow[2][col][c] = *\/ */
+/* /\* 	  (smrow[2][col][c]*6707 + smrow[1][col][c]*1485 + 4096) >> 13; *\/ */
+
+/* /\*   /\\* Adjust the chroma toward the smooth values *\\/ *\/ */
+/* /\*     /\\* SATURATION ? *\\/ *\/ */
+/* /\*     /\\* Use: curve[3]->curve[5] (ChromaDQ) *\\/ *\/ */
+/* /\*     for (col=0; col < (width & ~3); col++) { *\/ */
+/* /\*       for (i=j=30, c=0; c < 3; c++) { *\/ */
+/* /\* 	i += smrow[2][col][c]; *\/ */
+/* /\* 	j += image[row*width+col][c]; *\/ */
+/* /\*       } *\/ */
+/* /\*       if (i!=0) *\/ */
+/* /\* 	j = (j << 16) / i; *\/ */
+/* /\*       else *\/ */
+/* /\* 	j = (j<<16); *\/ */
+/* /\*       for (sum=c=0; c < 3; c++) { *\/ */
+/* /\* 	ipix[c] = foveon_apply_curve (curve[c+3], *\/ */
+/* /\* 	  ((smrow[2][col][c] * j + 0x8000) >> 16) - image[row*width+col][c]); *\/ */
+/* /\* 	sum += ipix[c]; *\/ */
+/* /\*       } *\/ */
+/* /\*       sum >>= 3; *\/ */
+/* /\*       FORC3 { *\/ */
+/* /\* 	i = image[row*width+col][c] + ipix[c] - sum; *\/ */
+/* /\* 	if (i < 0) i = 0; *\/ */
+/* /\* 	image[row*width+col][c] = i; *\/ */
+/* /\*       } *\/ */
+/* /\*     } *\/ */
+/* /\*   } *\/ */
+/* /\*   free (shrink); *\/ */
+/* /\*   free (smrow[6]); *\/ */
+/* /\*   for (i=0; i < 8; i++) *\/ */
+/* /\*     free (curve[i]); *\/ */
+
+/* /\*   /\\* Trim off the black border *\\/ *\/ */
+/* /\*   active[1] -= keep[1]; *\/ */
+/* /\*   active[3] -= 2; *\/ */
+/* /\*   i = active[2] - active[0]; *\/ */
+/* /\*   for (row=0; row < active[3]-active[1]; row++) *\/ */
+/* /\*     memcpy (image[row*i], image[(row+active[1])*width+active[0]], *\/ */
+/* /\* 	 i * sizeof *image); *\/ */
+/* /\*   width = i; *\/ */
+/* /\*   height = row;     *\/ */
 }
 
 X3F *X3F_load_full_x3f(char *filename){

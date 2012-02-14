@@ -72,35 +72,34 @@ void update_camf_view(GtkWidget *widget, X3F_FILE *x3f_file){
     /* OK, we need to find the corresponding camf entry */
     for (camf_entry=x3f_file->x3f_struct->camf_list;camf_entry!=NULL;camf_entry=camf_entry->next)
       if (!(strcmp(camf_entry->name, value)))
-	break;
+		break;
 
     g_free(value);
 
     switch (camf_entry->CAMFtype) {
     case X3F_CMbT:
       string=g_string_new("Technical Infos\n");
-       g_string_append_printf(string, "%s\n",
-			      (char*)camf_entry->value);
-       break;
+	  g_string_append_printf(string, "%s\n",(char*)camf_entry->value);
+	  break;
     case X3F_CMbP:
       params=camf_entry->value;
       string=g_string_new("Parameters ");
       g_string_append_printf(string, "%s\nParameters count: %d\n",
-			     camf_entry->name,
-			     camf_entry->count);
+							 camf_entry->name,
+							 camf_entry->count);
       for (i=0; i<camf_entry->count; i++)
-	g_string_append_printf(string, "%s\t=>\t%s\n", params[i].name,params[i].value); 
+		g_string_append_printf(string, "%s\t=>\t%s\n", params[i].name,params[i].value); 
       break;
     case X3F_CMbM:
       cmbm=camf_entry->value;
       string=g_string_new("Matrix ");
       g_string_append_printf(string, "%s\nMatrix dimension: %d\tMatrix data type: %d\n",
-			    camf_entry->name,
-			    camf_entry->count,
-			    cmbm->dataType);
+							 camf_entry->name,
+							 camf_entry->count,
+							 cmbm->dataType);
       g_string_append_printf(string, "Individual plane size:");
       for (i=0; i<camf_entry->count;i++)
-	g_string_append_printf(string, " %d", cmbm->planeElements[i]);
+		g_string_append_printf(string, " %d", cmbm->planeElements[i]);
       g_string_append_printf(string, "\n\n");
       g_string_append_printf(string, "The following values are not properly formatted\n");
       g_string_append_printf(string, "I made the following assumption:\nfirst matrix dimension is the number of rows\n");
@@ -114,35 +113,35 @@ void update_camf_view(GtkWidget *widget, X3F_FILE *x3f_file){
       /* compute the number of values to display */
       valueCount=1;
       for (i=0; i<camf_entry->count; i++)
-	valueCount*=cmbm->planeElements[i];
+		valueCount*=cmbm->planeElements[i];
 
       for (i=0; i<valueCount; i++){
-	switch (camf_entry->count){
-	case 1:
-	  g_string_append_printf(string, "\n");
-	  break;
-	case 2:
-	  if (i%cmbm->planeElements[1]==0) g_string_append_printf(string, "\n");
-	  break;
-	case 3:
-	  if (i%cmbm->planeElements[1]==0) g_string_append_printf(string, "\n");
-	  if (i%(cmbm->planeElements[0]*cmbm->planeElements[1])==0) g_string_append_printf(string, "\n");
-	}
-	switch (cmbm->dataType) {
-	case 0:
-	  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_16);
-	  break;
-	case 3:
-	  g_string_append_printf(string, "%f ", cmbm->matrix[i].f);
-	  break;
-	case 6:
-	  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_8);
-	  break;
-	default:
-	  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_32);
-	}
+		switch (camf_entry->count){
+		case 1:
+		  g_string_append_printf(string, "\n");
+		  break;
+		case 2:
+		  if (i%cmbm->planeElements[1]==0) g_string_append_printf(string, "\n");
+		  break;
+		case 3:
+		  if (i%cmbm->planeElements[1]==0) g_string_append_printf(string, "\n");
+		  if (i%(cmbm->planeElements[0]*cmbm->planeElements[1])==0) g_string_append_printf(string, "\n");
+		}
+		switch (cmbm->dataType) {
+		case 0:
+		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_16);
+		  break;
+		case 3:
+		  g_string_append_printf(string, "%f ", cmbm->matrix[i].f);
+		  break;
+		case 6:
+		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_8);
+		  break;
+		default:
+		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_32);
+		}
       }
-     break;
+	  break;
     }
     value=g_string_free(string, FALSE);
  
@@ -209,7 +208,7 @@ gboolean load_file(gpointer userdata) {
   gtk_label_set_text(GTK_LABEL(headerInfos), g_string_free(string, FALSE));
 
   X3F_decode_raw(x3f->raw->datas);
-
+  X3F_dcraw_interpolate_raw(x3f);
  
   renderer = gtk_cell_renderer_text_new();
   column = gtk_tree_view_column_new_with_attributes("Property",

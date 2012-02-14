@@ -208,7 +208,7 @@ typedef struct {
 } PROP;
 
 /* Do we really need to keep the CAMF struct? Probably the chained list of camf_list_entry is enough */
-/* if so, we need to allocate memory for
+/* if so, we need to allocate memory for */
 /* CAMF: structure to hold all required infos to convert raw image data */
 typedef struct camf_typeN_s {
   uint32_t val0;
@@ -332,7 +332,7 @@ typedef enum {
 
 typedef struct {
   uint32_t dataType;
-  uint32_t *planeElements;
+  int32_t *planeElements;
   MATRIX *matrix;
 } CMbM;
 
@@ -346,6 +346,17 @@ typedef struct CAMF_ENTRY{
   struct CAMF_ENTRY *next;
 } CAMF_LIST_ENTRY;
 
+typedef struct {
+  float ddft[3][3][2]; /* DarkDrift */
+  uint32_t dscr[2][2]; /*DarkShieldColRange */
+  float wbdiv[3]; /* White Balance Divider */
+  float (*black)[3];
+  float cfilt;
+  int16_t *curve[8];
+  int16_t (*shrink)[3];
+
+} X3F_MATRIX_TRANSFORM;
+
 /* Main X3F struct */
 typedef struct {
   HEADER *header;
@@ -358,7 +369,10 @@ typedef struct {
   DIR_ENTRY *raw; /* a pointer to the last recorded raw */
   PROPERTY *property; /* only a chained list of pointer to prop section->data */
   CAMF_LIST_ENTRY *camf_list; 
-  uint32_t dir_offset; /* offset of the directory section (4 last bytes of the X3F file) */
+  uint32_t dir_offset; /* offset of the directory section (4 last
+						  bytes of the X3F file) */
+  X3F_MATRIX_TRANSFORM *interpolation; /* all parameters needed for
+										 interpolation process */
 }  X3F;
 
 void X3F_foveon_camf_decoder(decode *first_decode, uint size, uint16_t code, uint16_t *huff);
@@ -380,4 +394,6 @@ IMA *X3F_read_ima(FILE *fp, uint dataLength);
 PROP *X3F_read_prop(FILE *fp, X3F *x3f, uint32_t dataLength);
 X3F *X3F_load_full_x3f(char *filename);
 DIR_ENTRY *X3F_get_section(X3F *x3f, uint32_t sectionType);
+void X3F_dcraw_interpolate_raw(X3F *x3f);
+
 #endif /* __LIB_X3F__ */
