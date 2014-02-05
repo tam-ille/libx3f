@@ -65,7 +65,33 @@
 #define TRUE_HUF_MAX_TABLE_SIZE 28
 
 #define DECODED_IMAGE 1
+#define WBCC_MAX_LENGTH 24
+#define WBGAINS_MAX_LENGTH 24
 
+#define FORC(cnt) for (c=0; c < cnt; c++)
+#define FORC3 FORC(3)
+
+
+
+#define X3F_MEM_ERROR(_where, _who)					\
+  do{									\
+    fprintf(stderr, "Memory allocation error in function " _where " for array " _who "\n"); \
+  } while(0)
+
+#define X3F_READ_ERROR(_where)					\
+  do{								\
+    fprintf(stderr, "Reading error in function " _where "\n");	\
+  } while(0)
+
+#define X3F_ERROR(_msg)				\
+  do{						\
+    fprintf(stderr, _msg "\n");			\
+  } while(0)
+
+#define X3F_MSG(_msg)				\
+  do{						\
+    printf(_msg "\n");				\
+  } while(0)
 
 typedef uint16_t utf16_t;
 
@@ -179,6 +205,8 @@ typedef struct {
   /* in the case of thumb or preview, image is of type char *
       in case of raw data, image is of type ushort *[3] */
   uint8_t flags; /* Used to set the state of the image: DECODED_IMAGE, MODIFIED_IMAGE, ... */
+  uint16_t max[3];
+  uint16_t min[3]; /* have to check if this correspond to DarkLevel values */
 } IMA;
 
 typedef struct X3F_PROPERTY{
@@ -208,7 +236,7 @@ typedef struct {
 } PROP;
 
 /* Do we really need to keep the CAMF struct? Probably the chained list of camf_list_entry is enough */
-/* if so, we need to allocate memory for
+/* if so, we need to allocate memory for */
 /* CAMF: structure to hold all required infos to convert raw image data */
 typedef struct camf_typeN_s {
   uint32_t val0;
@@ -240,8 +268,9 @@ typedef struct {
     camf_type2 t2;
     camf_type4 t4;
   };
-  uint8_t *camf_data; /*thes is the decoded
+  char *camf_data; /*thes is the decoded
 		      data */
+  uint dataSize;
 } CAMF;
 
 
@@ -316,7 +345,7 @@ typedef union {
 /* typedef struct { */
 /* /\*   CMb_HEADER header; *\/ */
 /*  /\*  uint8_t *CAMFentryName[24]; *\/		/\* seems to be a char[24] NULL terminated string *\/ */
-/*   uint32_t typeOfData;			/\* 3=float, 6=uint8_t?, 2=int8_t?, 1=uint32_t?, 0=uint16_t? *\/ */
+/*   uint32_t typeOfData;			/\* 3=float, 6=uint8_t?, 2=int8_t?, 1=uint32_t?, 0=uint16_t?, 5?*\/ */
 /*   uint32_t matrixDimension;		/\* dimension of the matrix *\/ */
 /*   uint32_t dataStartOffset; */
 /*   MATRIX_INFOS *matrixInfos;	/\* This is an array of size matrixDimension *\/ */
@@ -345,6 +374,18 @@ typedef struct CAMF_ENTRY{
   /* in the case of CMbP, value will be a bidimensionnal array. We should store the number of parameters in the struct */
   struct CAMF_ENTRY *next;
 } CAMF_LIST_ENTRY;
+
+typedef struct {
+  uint32_t height;
+  uint32_t width;
+  ushort curve[0x10000];
+  int histogram[3][0x2000];
+  double gamm[6];
+  float rgb_cam[3][3];
+  int bps;
+  int colors;
+  void *img;
+} INTERPOLATED_IMG;
 
 /* Main X3F struct */
 typedef struct {
@@ -380,4 +421,15 @@ IMA *X3F_read_ima(FILE *fp, uint dataLength);
 PROP *X3F_read_prop(FILE *fp, X3F *x3f, uint32_t dataLength);
 X3F *X3F_load_full_x3f(char *filename);
 DIR_ENTRY *X3F_get_section(X3F *x3f, uint32_t sectionType);
+void f20_color_correction(X3F *x3f);
+void color_correction(X3F *x3f);
+MATRIX *X3F_get_matrix(CAMF_LIST_ENTRY *camf_list, char *entry_name);
+int X3F_foveon_interpolate(X3F *x3f);
+int X3F_foveon_TRUE_interpolate(X3F *x3f);
+int X3F_foveon_F20_interpolate(X3F *x3f);
+int X3F_raw_interpolate(X3F *x3f);
+char *foveon_get_property(PROPERTY *prop_list, char *name);
+char *foveon_get_param(CAMF_LIST_ENTRY *camf_list, char *blockName, const char *name);
+CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name);
+
 #endif /* __LIB_X3F__ */

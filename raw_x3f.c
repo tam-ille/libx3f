@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <glib.h>
 #include <float.h>
 #include <limits.h>
 #include <sys/types.h>
@@ -12,27 +13,6 @@
 #include <locale.h>
 #include <jpeglib.h>
 #include "raw_x3f.h"
-
-#define X3F_MEM_ERROR(_where, _who)					\
-  do{									\
-    fprintf(stderr, "Memory allocation error in function " _where " for array " _who "\n"); \
-  } while(0)
-
-#define X3F_READ_ERROR(_where)					\
-  do{								\
-    fprintf(stderr, "Reading error in function " _where "\n");	\
-  } while(0)
-
-#define X3F_ERROR(_msg)				\
-  do{						\
-    fprintf(stderr, _msg "\n");			\
-  } while(0)
-
-#define X3F_MSG(_msg)				\
-  do{						\
-    printf(_msg "\n");				\
-  } while(0)
-
 
 X3F *X3F_init(void){
   X3F *x3f=NULL;
@@ -86,8 +66,8 @@ void X3F_free(X3F *x3f){
       case X3F_CAMF:
 	printf("Cleaning CAMF");
 	camf=(CAMF *)x3f->dir_entries[i]->datas;
-/* 	if (camf->camf_data) */
-/* 	  free(camf->camf_data); */
+	if (camf->camf_data)
+	  free(camf->camf_data);
 /* 	free(camf); */
 	printf("\tDone\n");
 	break;
@@ -441,7 +421,7 @@ CAMF_LIST_ENTRY *X3F_fill_camf_list(uint dataSize, uint8_t *camf_data, CAMF_LIST
     n++;
   }
   printf("%d camf entries were found\n", n);
-  free(camf_data);
+/*   free(camf_data); */
   return camf_list;
 }
 
@@ -484,6 +464,8 @@ CAMF *X3F_read_camf(FILE *fp, uint32_t dataLength) {
   default:
     X3F_MSG("Unknown camf type");
   }
+  camf->dataSize=dataSize;
+  printf("dataSize: %d\n", dataSize);
   return camf;
 }
 
@@ -554,7 +536,7 @@ void X3F_decode_camf4(CAMF *camf, uint dataSize){
   decode *dindex;
   int32_t row_start_acc[2][2]={{camf->t4.decode_bias,camf->t4.decode_bias},{camf->t4.decode_bias,camf->t4.decode_bias}};
 
-  uint8_t *decoded_data=NULL, *ptr;
+  char *decoded_data=NULL, *ptr;
   uint32_t col,row, bitbuf=0;
   int32_t diff, bit, i;
   uint8_t bits, b, sign;
@@ -804,20 +786,20 @@ int X3F_decode_preview(IMA *preview,uint32_t dataLength){
       raw_data=imageDataStart+preview->rowOffsets[row];
 
       for (bit=col=0; col < preview->columns; col++){
-	for (c=0; c < 3; c++) {
-	  for (dindex=first_decode; dindex->leaf<0; ) {
-	    if ((bit = (bit-1) & 31) == 31){
-	      for (i=0; i < 4; i++){
-		bitbuf = (bitbuf << 8) + raw_data[0];
-		raw_data++;
-	      }
-	    }
-	    dindex = dindex->branch[bitbuf >> bit & 1];
-	  }
-	  pixel[c] += dindex->leaf;
-	}
-	for (c=0;c<3;c++)
-	  decoded_data[n++]=pixel[c];
+		for (c=0; c < 3; c++) {
+		  for (dindex=first_decode; dindex->leaf<0; ) {
+			if ((bit = (bit-1) & 31) == 31){
+			  for (i=0; i < 4; i++){
+				bitbuf = (bitbuf << 8) + raw_data[0];
+				raw_data++;
+			  }
+			}
+			dindex = dindex->branch[bitbuf >> bit & 1];
+		  }
+		  pixel[c] += dindex->leaf;
+		}
+		for (c=0;c<3;c++)
+		  decoded_data[n++]=pixel[c];
       }
     }
     /* end dcraw */
@@ -825,15 +807,15 @@ int X3F_decode_preview(IMA *preview,uint32_t dataLength){
   } else if (preview->dataFormat==X3F_DATA_FORMAT_JPEG) { /* jpeg preview */
     /* decode the jpeg */
     decoded_data=X3F_jpeg_decompress_image((unsigned char *)raw_data, dataLength-IMA_HEADER_SIZE);
-     printf("JPEG preview\n");
+	printf("JPEG preview\n");
   } else {
     X3F_ERROR("Unknown preview data format");
   }
   if (decoded_data){
     void *tmp=preview->imageData;
     preview->imageData=decoded_data;
-/*     if (!preview->rowSize) */
-      preview->rowSize=preview->columns*3;
+	/*     if (!preview->rowSize) */
+	preview->rowSize=preview->columns*3;
     preview->flags|=DECODED_IMAGE;
     free(tmp);
     return 1;
@@ -848,8 +830,8 @@ int X3F_decode_raw(IMA *raw){
   unsigned row,col,c,i,b;
   int bitbuf=0, bit=-1;
   decode *dindex;
-  uint16_t pix[3], *pvalues;
-  uint16_t *decoded_raw;
+  int16_t pix[3], *pvalues;
+  int16_t (*decoded_raw)[4];
 
   if ((raw->flags & DECODED_IMAGE)== DECODED_IMAGE)
     return 1;
@@ -871,7 +853,7 @@ int X3F_decode_raw(IMA *raw){
     first_decode=malloc(sizeof(*first_decode)*2048);
     /* next are the compressed image data */
     X3F_foveon_image_decoder(first_decode, 1024, 0, huff);
-    if (!(decoded_raw=(uint16_t *) calloc (raw->rows*raw->columns*3, sizeof (*decoded_raw)))){
+    if (!(decoded_raw=(int16_t (*)[4]) calloc (raw->rows*raw->columns*4, sizeof (*decoded_raw)))){
       X3F_MEM_ERROR("X3F_decode_raw", "decoded_raw");
       return 0;
     }
@@ -880,30 +862,34 @@ int X3F_decode_raw(IMA *raw){
       memset (pix, 0, sizeof(pix));
       raw_data=imageDataStart+raw->rowOffsets[row];
       for (bit=col=0; col < raw->columns; col++){
-	if (raw->rowSize) {
-	  for (c=0; c<3; c++) pix[2-c] += pvalues[raw_data[c] >> c*10 & 0x3ff];
-	  raw_data+=3;
-	} else {
-	  for (c=0; c < 3; c++) {
-	    for (dindex=first_decode; dindex->leaf<0; ) {
-	      if ((bit = (bit-1) & 31) == 31){
-		for (i=0; i < 4; i++){
-		  bitbuf = (bitbuf << 8) + raw_data[0];
-		  raw_data++;
+		if (raw->rowSize) {
+		  for (c=0; c<3; c++) pix[2-c] += pvalues[raw_data[c] >> c*10 & 0x3ff];
+		  raw_data+=3;
+		} else {
+		  for (c=0; c < 3; c++) {
+			for (dindex=first_decode; dindex->leaf<0; ) {
+			  if ((bit = (bit-1) & 31) == 31){
+				for (i=0; i < 4; i++){
+				  bitbuf = (bitbuf << 8) + raw_data[0];
+				  raw_data++;
+				}
+			  }
+			  dindex = dindex->branch[bitbuf >> bit & 1];
+			}
+			pix[c] += pvalues[dindex->leaf];
+/* 				    pix[c]=(int16_t)pix[c]>0?pix[c]:0; */
+			if (pix[c] >> 16 && ~pix[c] >> 16){
+			  printf("Oups\n");
+			  free(decoded_raw);
+			  return 0; /* Corrupted data? */
+			}
+		  }
 		}
-	      }
-	      dindex = dindex->branch[bitbuf >> bit & 1];
-	    }
-	    pix[c] += pvalues[dindex->leaf];
-	    pix[c]=(int16_t)pix[c]>0?pix[c]:0;
-	    if (pix[c] >> 16 && ~pix[c] >> 16){
-	      printf("Oups\n");
-	      free(decoded_raw);
-	      return 0; /* Corrupted data? */
-	    }
-	  }
-	}
-	for (c=0; c <3; c++) decoded_raw[n++]= pix[c];
+		for (c=0; c <3; c++) {
+		  decoded_raw[row*raw->columns+col][c] = pix[c];
+		  if (pix[c]>raw->max[c]) raw->max[c]=pix[c];
+		  if (pix[c]<raw->min[c]) raw->min[c]=pix[c];
+		}
       }
     }
     /* end dcraw */
@@ -936,7 +922,7 @@ int X3F_decode_raw(IMA *raw){
     X3F_foveon_camf_decoder(first_decode, TRUE_tableSize, 0, huff);
     /* pixels are stored R0->Rn, G0->Gn, B0->Bn */
     /* this means we first decode the red channel, then the green one and finally the blue one */
-    if (!(decoded_raw=(uint16_t *) calloc (raw->rows*raw->columns*3, sizeof (*decoded_raw)))){
+    if (!(decoded_raw=(int16_t (*)[4]) calloc (raw->rows*raw->columns*3, sizeof (*decoded_raw)))){
       X3F_MEM_ERROR("X3F_decode_raw", "decoded_raw");
       free(first_decode);
       return 0;
@@ -946,59 +932,61 @@ int X3F_decode_raw(IMA *raw){
       int n=c;
       int16_t row_start_acc[2][2]={{seed[c],seed[c]},{seed[c],seed[c]}};
       if (c>0) {
-	dataStart+=(((PlaneSize[c-1]+15)/16)*16);
-	raw_data=dataStart;
+		dataStart+=(((PlaneSize[c-1]+15)/16)*16);
+		raw_data=dataStart;
       }
       bit=0;
       for (row=0; row < raw->rows; row++) {
-	int16_t acc[2]={row_start_acc[row&1][0],row_start_acc[row&1][1]};
-	for (col=0; col < raw->columns; col++){
-	  for (dindex=first_decode; dindex->branch[0]||dindex->branch[1]; ) {
-	    if ((bit = (bit-1) & 31) == 31){
-	      for (i=0; i < 4; i++){
-		bitbuf = (bitbuf << 8) + raw_data[0];
-		raw_data++;
-	      }
-	    }
-	    if (!(dindex = dindex->branch[bitbuf>>bit&1])){
-	      printf("Something wrong happened when traversing the huffman tree :( \n");
-	      break;
-	    }
-	  }
-	  /* dindex->leaf is the number of bits to be read */
-	  /* this number of bits are the actual diff with pixel color value n-2 */
-	  bits = dindex->leaf;
-	  if (bits==0)
-	    diff=0;
-	  else {
-	    if ((bit=(bit-1)&31)==31)
-	      for (b=0; b < 4; b++){
-		bitbuf = (bitbuf << 8) + raw_data[0];
-		raw_data++;
-	      }
-	    sign=diff=bitbuf>>bit &1;
-	    /* 	  Attention, on ne veut garder que 16 bit max dans diff */
-	    for (i=1;i<bits;i++){
-	      if ((bit=(bit-1)&31)==31)
-		for (b=0; b < 4; b++){
-		  bitbuf = (bitbuf << 8) + raw_data[0];
-		  raw_data++;
+		int16_t acc[2]={row_start_acc[row&1][0],row_start_acc[row&1][1]};
+		for (col=0; col < raw->columns; col++){
+		  for (dindex=first_decode; dindex->branch[0]||dindex->branch[1]; ) {
+			if ((bit = (bit-1) & 31) == 31){
+			  for (i=0; i < 4; i++){
+				bitbuf = (bitbuf << 8) + raw_data[0];
+				raw_data++;
+			  }
+			}
+			if (!(dindex = dindex->branch[bitbuf>>bit&1])){
+			  printf("Something wrong happened when traversing the huffman tree :( \n");
+			  break;
+			}
+		  }
+		  /* dindex->leaf is the number of bits to be read */
+		  /* this number of bits are the actual diff with pixel color value n-2 */
+		  bits = dindex->leaf;
+		  if (bits==0)
+			diff=0;
+		  else {
+			if ((bit=(bit-1)&31)==31)
+			  for (b=0; b < 4; b++){
+				bitbuf = (bitbuf << 8) + raw_data[0];
+				raw_data++;
+			  }
+			sign=diff=bitbuf>>bit &1;
+			/* 	  Attention, on ne veut garder que 16 bit max dans diff */
+			for (i=1;i<bits;i++){
+			  if ((bit=(bit-1)&31)==31)
+				for (b=0; b < 4; b++){
+				  bitbuf = (bitbuf << 8) + raw_data[0];
+				  raw_data++;
+				}
+			  diff=(diff<<1) + ((bitbuf>>bit)&1);
+			}
+			if (sign == 0)
+			  diff -= (1<<bits) - 1;
+		  }
+		  acc[col&1]+=diff;
+		  if (acc[col&1] >> 16 && ~acc[col&1] >>16) {/* Corrupted data? */
+			printf("Something wrong happened :( \n");
+			free(decoded_raw);
+			free(first_decode);
+			return 0;
+		  }
+		  if (col<2) row_start_acc[row&1][col&1]=acc[col&1];
+		  decoded_raw[row*raw->columns+col][c] = acc[col&1];
+		  if (acc[col&1]>raw->max[c]) raw->max[c]=acc[col&1];
+		  if (acc[col&1]<raw->min[c]) raw->min[c]=acc[col&1];
 		}
-	      diff=(diff<<1) + ((bitbuf>>bit)&1);
-	    }
-	    if (sign == 0)
-	      diff -= (1<<bits) - 1;
-	  }
-	  acc[col&1]+=diff;
-	  if (acc[col&1] >> 16 && ~acc[col&1] >>16) {/* Corrupted data? */
-	    printf("Something wrong happened :( \n");
-	    free(decoded_raw);
-	    free(first_decode);
-	    return 0;
-	  }
-	  if (col<2) row_start_acc[row&1][col&1]=acc[col&1];
-	  decoded_raw[n+=3]=acc[col&1];
-	}
       }
     }
     /* end X3FTools */
@@ -1007,17 +995,465 @@ int X3F_decode_raw(IMA *raw){
     X3F_ERROR("Unknown raw data format");
   }
   if (decoded_raw){
-    void *tmp=raw->imageData;
-
-    raw->imageData=decoded_raw;
-    raw->rowSize=raw->columns*3;
+	free(raw->imageData);
+    raw->imageData=(void *)decoded_raw;
+    raw->rowSize=raw->columns*4;
     raw->flags|=DECODED_IMAGE;
-    free(tmp);
+    printf ("Max R: %d\nMax G: %d\nMax B: %d\n", raw->max[0], raw->max[1], raw->max[2]);
+    printf ("Min R: %d\nMin G: %d\nMin B: %d\n", raw->min[0], raw->min[1], raw->min[2]);
     return 1;
   }
   return 0;
 }
 
+CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name){
+  /* go through the camf_entries to find the entry with name entry_name */
+  CAMF_LIST_ENTRY *entry;
+
+  if (!entry_name) return NULL;
+  for (entry=camf_list; entry!=NULL; entry=entry->next)
+    if (!(strcmp(entry->name, entry_name))){
+      /* we found what we were looking for ! */
+      printf ("Found %s\n", entry->name);
+      break;
+    }
+  return entry;	
+}
+
+char *foveon_get_param(CAMF_LIST_ENTRY *camf_list, char *blockName, const char *name){
+  CAMF_LIST_ENTRY *entry;
+  PARAMETERS *params;
+  uint i;
+
+  entry=X3F_get_camf_entry(camf_list, blockName);
+  if (entry !=NULL){
+    params=(PARAMETERS *)entry->value;
+    for (i=0;i<entry->count;i++){
+      if (!strcmp(params[i].name,name)){
+	printf("Found parameter %s: %s\n", name, params[i].value);
+	return params[i].value;
+      }
+    }
+  } else {
+    printf("Oups\n");
+  }
+  return NULL;
+}
+
+char *foveon_get_property(PROPERTY *prop_list, char *name){
+  char *value=NULL, *prop_name=NULL;
+  PROPERTY *prop;
+
+  for (prop=prop_list;prop!=NULL;prop=prop->next){
+    prop_name=g_utf16_to_utf8(prop->name,-1,NULL,NULL,NULL);
+    if (!strcmp(prop_name, name)){
+      value=g_utf16_to_utf8(prop->value, -1, NULL,NULL,NULL);
+      printf("Found property %s = %s\n", prop_name, value);
+      break;
+    }
+  }
+  g_free(prop_name);
+  return value;
+}
+
+void get_matrix(CMbM *cmbm, void *ptr,  int valueCount){
+  int i;
+  int32_t *mat;
+
+  mat=malloc(valueCount*4);
+  for (i=0; i<valueCount;i++)
+	switch (cmbm->dataType) {
+	case 0:
+	  mat[i]=cmbm->matrix[i].ui_16;
+	  break;
+	case 3:
+	  mat[i]=cmbm->matrix[i].ui_32;
+	  break;
+	case 6:
+	  mat[i]=cmbm->matrix[i].ui_8 & 0xffff;
+	  break;
+	default:
+	  mat[i]=cmbm->matrix[i].ui_32;
+	}
+  memcpy(ptr, mat, valueCount*4);
+  free(mat);
+  return;
+}
+
+
+int X3F_raw_interpolate(X3F *x3f){
+  IMA *ima=(IMA *)x3f->raw->datas;
+
+/*   printf ("DATA Type:%s\n DATA Format: %s", ima->imageDataType, ima->dataFormat); */
+  if (ima->imageDataType == X3F_DATA_TYPE_RAW) {
+    if (ima->dataFormat == X3F_DATA_FORMAT_RAW)
+      X3F_foveon_interpolate(x3f);
+    else
+      X3F_foveon_TRUE_interpolate(x3f);
+  } else if (ima->imageDataType == X3F_DATA_TYPE_RAW_SD1)
+    X3F_foveon_F20_interpolate(x3f);
+  else
+    X3F_ERROR("Unknown raw data type\n");
+  return 1;
+}
+
+/* this is the interpolation process for pre-TRUEII x3f */
+int X3F_foveon_interpolate(X3F *x3f){
+
+/*   bad_pixels_correction(x3f,"BadPixels"); */
+/*   compute_black_point(); */
+/*   compute_white_point(); */
+/*   apply_spatial_gain(); */
+/*   gamma_correction(); */
+/*   apply_colors_curves(); */
+/*   sharpen_reds(); */
+/*   apply_chroma_curve(); */
+/*   X3F_cam2xyz(ima, (char *)x3f->header->whiteBalanceString, x3f->camf_list); */
+/*   X3F_RGBNeutral(ima, (char *)x3f->header->whiteBalanceString, x3f->camf_list); */
+  color_correction(x3f);
+/*   colorspace_transformation(); */
+/*   black_border_suppression(); */
+
+  return 0;
+}
+
+/* this is the interpolation process for TRUEII x3f */
+int X3F_foveon_TRUE_interpolate(X3F *x3f){
+
+/*   bad_pixels_correction(x3f,"BadPixels"); */
+/*   compute_black_point(); */
+/*   compute_white_point(); */
+/*   apply_spatial_gain(); */
+/*   gamma_correction(); */
+/*   apply_colors_curves(); */
+/*   sharpen_reds(); */
+/*   apply_chroma_curve(); */
+/*   X3F_cam2xyz(ima, (char *)x3f->header->whiteBalanceString, x3f->camf_list); */
+  f20_color_correction(x3f);
+/*   colorspace_transformation(); */
+/*   black_border_suppression(); */
+
+  return 0;
+}
+
+/* this is the interpolation process for F20 captor x3f */
+int X3F_foveon_F20_interpolate(X3F *x3f){
+
+  /*   bad_pixels_SD1_correction(x3f,"BadPixelsF20"); */
+  /*   compute_black_point(); */
+  /*   compute_white_point(); */
+  /*   apply_spatial_gain(); */
+  /*   gamma_correction(); */
+  /*   apply_colors_curves(); */
+  /*   sharpen_reds(); */
+  /*   apply_chroma_curve(); */
+  f20_color_correction(x3f);
+  /*   colorspace_transformation(); */
+  /*   black_border_suppression(); */
+
+  return 0;
+}
+
+/* color correction for f20 captors */
+void f20_color_correction(X3F *x3f){
+  IMA *ima=(IMA *)x3f->raw->datas;
+  uint16_t (*image)[3]=(uint16_t (*)[3])ima->imageData;
+  int row, col, c, height, width, i, d;
+  uint16_t *pix;
+  char wbcc[WBCC_MAX_LENGTH], wbgains[WBGAINS_MAX_LENGTH], cmcc[64], cmcm[64];
+  char *prop_value;
+  CAMF_LIST_ENTRY *camf_entry;
+  CMbM *cmbm;
+  float cc[3][3], gain[3];
+
+  width=ima->columns;
+  height=ima->rows;
+ 
+  /* Pour SD1/1M & DP2/DPM
+     Il faut regarder dans WhiteBalanceColorCorrections (camf) la matrice à récupérer
+     et dans WhiteBalanceGains (camf) la table à récupérer
+  */
+  /* DP1 should be processed just like TRUEII raws, but the camf name
+     differs
+     WARNING!: SD15 should be processed just as DP1!!
+     SD15 also have ColorMode!!
+  */
+
+    bool f20=TRUE;
+    /* Argh!!! DP1 use TRUE RAW, but camf_name are not the same */
+    /* We should use DP1_%sCCMatrix, DP1_%sWBGain, DP1_CP2_Matrix */
+    /* Also there are no CMCM, CMCC, CorrectColorGain, FNumberGainFact SensorAdjustmentGainFact */
+    /* but we have BaseGain and ISOGainFact */
+
+    printf ("entered X3F_do_color_correction\n");
+    if (ima->imageDataType==X3F_DATA_TYPE_RAW) f20=FALSE;
+
+    camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "WhiteBalanceColorCorrections", (char *)x3f->header->whiteBalanceString));
+    if (!camf_entry)
+    camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "DP1_WhiteBalanceColorCorrections", (char *)x3f->header->whiteBalanceString));
+
+    printf("Got %s camf entry\n", camf_entry->name);
+
+    cmbm=camf_entry->value;
+    /* compute color correction matrix */
+    /* We know ccmatrix is [3][3] */
+    for (c=0,i=0;c<3;c++){
+      for(d=0;d<3;d++) {
+	cc[c][d]=cmbm->matrix[i++].f;
+      }
+    }
+
+    /* CP2_Matrix? */
+/*     if (!f20) camf_entry=X3F_get_camf_entry(x3f->camf_list, "DP1_CP2_Matrix"); */
+/*     else camf_entry=X3F_get_camf_entry(x3f->camf_list, "CP2_Matrix"); */
+/*     printf("Got %s camf entry\n", camf_entry->name); */
+
+/*     cmbm=camf_entry->value; */
+/*     for (c=0,i=0;c<3;c++){ */
+/*       for(d=0;d<3;d++) { */
+/* 	cc[c][d]*=cmbm->matrix[i++].f; */
+/*       } */
+/*     } */
+
+    /* color mode */
+    prop_value=foveon_get_property (x3f->property, "CM_DESC");
+    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "ColorModeCompensations", prop_value))){
+      printf("Got %s camf entry\n", camf_entry->name);
+
+      cmbm=camf_entry->value;
+      /* compute color correction matrix */
+      /* We know ccmatrix is [3][3] */
+      for (c=0,i=0;c<3;c++){
+	for(d=0;d<3;d++) {
+	  cc[c][d]*=cmbm->matrix[i++].f*.45; /* .45 = TCGamma ? */
+	}
+      }
+    }
+    g_free(prop_value);
+      /*CorrectColorGain RR*/
+    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, "CorrectColorGain_RR")){
+      printf("Got %s camf entry\n", camf_entry->name);
+
+      cmbm=camf_entry->value;
+      for (c=0;c<3;c++){
+	cc[0][c]*=cmbm->matrix[c].f;
+      }
+      camf_entry=X3F_get_camf_entry(x3f->camf_list, "CorrectColorGain_GR");
+      printf("Got %s camf entry\n", camf_entry->name);
+
+      cmbm=camf_entry->value;
+      for (c=0;c<3;c++){
+	cc[1][c]*=cmbm->matrix[c].f;
+      }
+      camf_entry=X3F_get_camf_entry(x3f->camf_list, "CorrectColorGain_BR");
+      printf("Got %s camf entry\n", camf_entry->name);
+
+      cmbm=camf_entry->value;
+      for (c=0;c<3;c++){
+	cc[2][c]*=cmbm->matrix[c].f;
+      }
+    }
+
+    printf("values of cc: %f %f %f %f %f %f %f %f %f\n", cc[0][0], cc[1][0], cc[2][0], cc[1][0], cc[1][1], cc[1][2], cc[2][0], cc[2][1], cc[2][2]);
+		
+    /* WBGains */
+    camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "WhiteBalanceGains", (char *)x3f->header->whiteBalanceString));
+    if (!camf_entry) camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "DP1_WhiteBalanceGains", (char *)x3f->header->whiteBalanceString));
+    printf("Got %s camf entry\n", camf_entry->name);
+    cmbm=camf_entry->value;
+    /* compute gain matrix */
+    /* We know gainMatrix is [3] */
+    for (i=0; i<3; i++)
+      gain[i]=cmbm->matrix[i].f;
+    camf_entry=X3F_get_camf_entry(x3f->camf_list, "TempGainFact");
+    printf("Got %s camf entry\n", camf_entry->name);
+    cmbm=camf_entry->value;
+    /* compute gain matrix */
+    /* We know gainMatrix is [3] */
+    for (i=0; i<3; i++)
+      gain[i]*=cmbm->matrix[i].f;
+
+    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, "FNumberGainFact")){
+      printf("Got %s camf entry\n", camf_entry->name);
+      cmbm=camf_entry->value;
+      /* compute gain matrix */
+      /* We know gainMatrix is [3] */
+      for (i=0; i<3; i++)
+	gain[i]*=cmbm->matrix[i].f;
+    }
+    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, "SensorAdjustmentGainFact")){
+      printf("Got %s camf entry\n", camf_entry->name);
+      cmbm=camf_entry->value;
+      /* compute gain matrix */
+      /* We know gainMatrix is [3] */
+      for (i=0; i<3; i++)
+	gain[i]*=cmbm->matrix[i].f;
+    }
+/*     } else { */
+      //	camf_entry=X3F_get_camf_entry(x3f->camf_list, "BaseGain");
+      //printf("Got %s camf entry\n", camf_entry->name);
+      //  cmbm=camf_entry->value;
+      /* compute gain matrix */
+      /* We know gainMatrix is [3] */
+      //  for (i=0; i<3; i++)
+      //			gain[i]*=cmbm->matrix[i].f;
+      //		camf_entry=X3F_get_camf_entry(x3f->camf_list, "ISOGainFact");
+      //printf("Got %s camf entry\n", camf_entry->name);
+      //  cmbm=camf_entry->value;
+      /* compute gain matrix */
+      /* We know gainMatrix is [3] */
+      //  for (i=0; i<3; i++)
+      //			gain[i]/=cmbm->matrix[i].f;
+
+/*     } */
+    /* ColorMode ColorCorrection*/
+    /* We need to get CM_DESC property */
+
+    //camf_entry=X3F_get_camf_entry(x3f->camf_list, "CMCC_landscape");
+    //printf("Got %s camf entry\n", camf_entry->name);
+    //  cmbm=camf_entry->value;
+    /* compute gain matrix */
+    /* We know gainMatrix is [3] */
+    //  for (i=0; i<3; i++)
+    //				gain[i]=cmbm->matrix[i].f;
+
+
+    for (i=0;i<3;i++)
+      for (c=0;c<3;c++) cc[i][c]*=gain[c];
+    
+    printf("values of cc: %f %f %f %f %f %f %f %f %f\n", cc[0][0], cc[1][0], cc[2][0], cc[1][0], cc[1][1], cc[1][2], cc[2][0], cc[2][1], cc[2][2]);
+
+
+
+  /* On veut modifier les valeurs RVB de chaque pixel */
+
+  for (row=0; row<height; row++){
+    pix = image[row*width];
+    for (col=0; col<width; col++){
+      uint16_t val[3];
+      for (c=0; c < 3; c++) val[c]=pix[c];
+      for (c=0; c < 3; c++) {
+	float tmp;
+	tmp=cc[c][0]*val[0]+cc[c][1]*val[1]+cc[c][2]*val[2];
+	if (tmp<0) pix[c]=0; else pix[c]=floor(tmp/* *4095/ima->max[c] */);
+      }
+      pix+=3;
+    }
+  }
+}
+
+void color_correction(X3F *x3f){
+  static const float table[][12] =
+    {{1.4032,-0.2231,-0.1016,-0.5263,1.4816,0.017,-0.0112,0.0183,0.9113 },
+    {3.4032,-0.2231,-0.1016,-0.5263,3.4816,0.017, -0.0112,0.0183,0.4113 }};
+
+  IMA *ima=(IMA *)x3f->raw->datas;
+  uint16_t (*image)[3]=(uint16_t (*)[3])ima->imageData;
+  int row, col, c, height, width, i, j, d;
+  uint16_t *pix;
+  char wbcc[WBCC_MAX_LENGTH], wbgains[WBGAINS_MAX_LENGTH], cmcc[64], cmcm[64];
+  char *param_value;
+  CAMF_LIST_ENTRY *camf_entry;
+  CMbM *cmbm;
+  float cc[3][3], wbc[3][3], last[3][3], div[3], trans[3][3];
+  float  rgb_cam[3][3];
+  double  dsum=0, trsum[3];
+  uint  keep[4], active[4];
+
+
+  for (i=0; i < 3; i++)
+    for (c=0;c<3;c++) rgb_cam[i][c] = table[0][i*3+c];
+
+
+  /* Trim off the black border */
+/*   camf_entry=X3F_get_camf_entry(x3f->camf_list, "KeepImageArea"); */
+/*   cmbm=camf_entry->value; */
+/*   get_matrix(cmbm, keep,4); */
+/*   printf("keep: %d %d %d %d\n", keep[0], keep[1], keep[2], keep[3]); */
+
+/*   camf_entry=X3F_get_camf_entry(x3f->camf_list, "ActiveImageArea"); */
+/*   cmbm=camf_entry->value; */
+/*   get_matrix(cmbm, active, 4); */
+/*   printf("active: %d %d %d %d\n", active[0], active[1], active[2], active[3]); */
+
+/*   active[1] -= keep[1]; */
+/*   active[3] -= 2; */
+/*   i = active[2] - active[0]; */
+/*   for (row=0; row < active[3]-active[1]; row++) */
+/* 	memcpy (image[row*i], image[(row+active[1])*ima->columns+active[0]], */
+/* 			i * sizeof *image); */
+/*   ima->columns = width = i; */
+/*   ima->rows = height = row; */
+  width = ima->columns;
+  height = ima->rows;
+
+  /* /\* DP1 : WhiteBalanceIlluminants * WhiteBalanceCorrections *\/ */
+  /* /\*   float mat[3][3]={{1.325910,0.084080,0.570090}, *\/ */
+  /* /\* 		   {-2.328980,5.665190,-1.810120,}, *\/ */
+  /* /\* 		   {2.327940,-8.260040,8.626610}}; *\/ */
+  /* SD14:  WhiteBalanceIlluminants * WhiteBalanceCorrections */
+  /*   float mat[3][3]={{1.281590,0.105849,0.523760}, */
+  /* 		   {-2.273677,5.651217,-2.115273}, */
+  /* 		   {2.101025,-7.713531,8.711900}}; */
+  camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "WhiteBalanceIlluminants", (char *)x3f->header->whiteBalanceString));
+  printf("Got %s camf entry\n", camf_entry->name);
+  cmbm=camf_entry->value;
+  get_matrix(cmbm, cc, 9);
+
+  camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param (x3f->camf_list, "WhiteBalanceCorrections", (char *)x3f->header->whiteBalanceString));
+  if (camf_entry==NULL) {
+	/* SD15 hack */
+	camf_entry=X3F_get_camf_entry(x3f->camf_list, "CamToXYZ_Flash");
+  }
+  printf("Got %s camf entry\n", camf_entry->name);
+  cmbm=camf_entry->value;
+  get_matrix(cmbm, wbc, 9);
+
+  memset(last, 0, sizeof last);
+  for(i=0;i<3;i++) {
+	for(d=0;d<3;d++) {
+	  for (c=0;c<3;c++) last[i][c]+=cc[i][d]*wbc[d][c];
+	}
+  }
+
+  sprintf(wbcc, "%sRGBNeutral", (char *)x3f->header->whiteBalanceString);
+  camf_entry=X3F_get_camf_entry(x3f->camf_list,  wbcc);
+  cmbm=camf_entry->value;
+  get_matrix(cmbm, div, 3);
+
+  memset (trans, 0, sizeof trans);
+  for (i=0; i < 3; i++)
+    for (j=0; j < 3; j++)
+      FORC3 { trans[i][j] += rgb_cam[i][c] * last[c][j]/*  * div[j] */;
+	}
+/*   FORC3 trsum[c] = trans[c][0] + trans[c][1] + trans[c][2]; */
+/*   dsum = (6*trsum[0] + 11*trsum[1] + 3*trsum[2]) / 20; */
+/*   for (i=0; i < 3; i++) */
+/*     FORC3 last[i][c] = trans[i][c] * dsum / trsum[i]; */
+/*   memset (trans, 0, sizeof trans); */
+/*   for (i=0; i < 3; i++) */
+/*     for (j=0; j < 3; j++){ */
+/*       FORC3 trans[i][j] += (i==c ? 32 : -1) * last[c][j] / 30; */
+/* 	  printf("trans[%d][%d]: %f\n", i, j, trans[i][j]); */
+/* 	} */
+
+  /* On veut modifier les valeurs RVB de chaque pixel */
+
+  for (row=0; row<height; row++){
+    pix = image[row*width];
+    for (col=0; col<width; col++){
+      uint16_t val[3];
+      for (c=0; c < 3; c++) val[c]=pix[c];
+      for (c=0; c < 3; c++) {
+	float tmp;
+	tmp=trans[c][0]*val[0]+trans[c][1]*val[1]+trans[c][2]*val[2];
+	if (tmp<0) pix[c]=0; else pix[c]=floor(tmp*4095/(ima->max[c]));
+      }
+      pix+=3;
+    }
+  }
+}
+	
 X3F *X3F_load_full_x3f(char *filename){
   FILE *fp;
   uint i;
@@ -1128,9 +1564,10 @@ X3F *X3F_load_full_x3f(char *filename){
       camf=X3F_read_camf(fp, subsection->dataLength);
       /* OK, camf datas will be decoded when parsing */
       x3f->camf_list=X3F_fill_camf_list(subsection->dataLength-CAMF_HEADER_SIZE,
-					camf->camf_data, 
+					camf->camf_data,
 					x3f->camf_list);
       subsection->datas=(void *)camf;
+/* 	  x3f->camf=camf; */
     } else {
       X3F_MSG("Unknown entry type: -> skipping");
       printf("Entry type was: %x\n", subsection->type);
