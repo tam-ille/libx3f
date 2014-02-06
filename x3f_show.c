@@ -255,13 +255,15 @@ gboolean load_file(gpointer userdata) {
   interpolated->gamm[1]=4.5;
   interpolated->img=i_img;
   for (i=0; i < 0x10000; i++) interpolated->curve[i] = i;
-  simple_coeff(interpolated, 1);
 /*       X3F_raw_interpolate(x3f); */
-  if (ima->imageDataType == X3F_DATA_TYPE_RAW)
+  if (ima->imageDataType == X3F_DATA_TYPE_RAW){
 	/*     if (ima->dataFormat == X3F_DATA_FORMAT_RAW) */
+	simple_coeff(interpolated, 0);
 	interpolate(interpolated, x3f);
-  else
+  } else {
+	simple_coeff(interpolated, 1);
 	foveon_f20_interpolate(interpolated, x3f);
+  }
   convert_to_rgb(interpolated, 1);
   apply_gamma(interpolated, 8, 1.0, x3f_file->filename);
 

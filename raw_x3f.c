@@ -1006,6 +1006,33 @@ int X3F_decode_raw(IMA *raw){
   return 0;
 }
 
+void create_floatimage(IMA *ima)
+{ 
+	unsigned int size, i, c;
+	uint16_t (*img)[4]=(uint16_t (*)[4])ima->imageData;
+	double val, saturation, dark, (*image)[4], image_max=0, image_min=DBL_MAX;
+	size = ima->rows*ima->columns;
+
+	image=(double (*)[4])calloc(size*4, sizeof(*image));
+	for (i=0; i < size*4; i++) 
+		{ 
+//type cast "integerimage" from integer to double and set val equal to integerimage
+		val = (double)img[0][i]/4096;
+		if (!val) continue;  
+
+//keep track of maximum and minimum values
+		if (val> image_max) image_max = val;
+		if (val< image_min) image_min = val;
+
+//set the double floating point array "image" equal to val
+		image[0][i]=val;
+		} 
+	free(ima->imageData);
+	ima->imageData=(void*)image;
+	ima->flags |= FLOAT_IMAGE;
+} 
+
+
 CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name){
   /* go through the camf_entries to find the entry with name entry_name */
   CAMF_LIST_ENTRY *entry;
