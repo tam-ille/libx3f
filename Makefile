@@ -23,12 +23,6 @@ x3f_show: x3f_show.o
 x3f_show.o: x3f_show.c
 	$(CC) -o x3f_show.o -c x3f_show.c $(CFLAGS)
 
-new-x3f_show: new-x3f_show.o 
-	$(CC) -o new-x3f_show new-x3f_show.o  $(LDFLAGS)
-
-new-x3f_show.o: new-x3f_show.c
-	$(CC) -o new-x3f_show.o -c new-x3f_show.c $(CFLAGS)
-
 #dcraw_func.o: dcraw_func.c dcraw_func.h
 #	$(CC) -o dcraw_func.o -c dcraw_func.c $(CFLAGS)
 
