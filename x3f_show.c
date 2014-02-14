@@ -157,7 +157,7 @@ void update_camf_view(GtkWidget *widget, X3F_FILE *x3f_file){
 		  g_string_append_printf(string, "%f ", cmbm->matrix[i].f);
 		  break;
 		case 6:
-		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_8);
+		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_32);
 		  break;
 		default:
 		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_32);
@@ -238,13 +238,13 @@ gboolean load_file(gpointer userdata) {
   X3F_decode_raw(x3f->raw->datas);
 
   ima=(IMA *)x3f->raw->datas;
-  raw_img=(uint16_t(*)[4])ima->imageData;
+/*   raw_img=(uint16_t(*)[4])ima->imageData; */
   i_img= (uint16_t (*)[4]) calloc (ima->rows*ima->columns*4, sizeof (uint16_t));
-/*   memcpy(i_img, ima->imageData, ima->rows*ima->columns*4*sizeof (uint16_t)); */
-  for (c=0; c<3 ;c++)
-	for (row=0; row<ima->rows; row++)
-	  for (col=0; col<ima->columns;col++)
-	    i_img[row*ima->columns+col][c]=raw_img[row*ima->columns+col][c];
+  memcpy(i_img, ima->imageData, ima->rows*ima->columns*4*sizeof (uint16_t));
+/*   for (c=0; c<3 ;c++) */
+/* 	for (row=0; row<ima->rows; row++) */
+/* 	  for (col=0; col<ima->columns;col++) */
+/* 	    i_img[row*ima->columns+col][c]=raw_img[row*ima->columns+col][c]; */
 	  
   interpolated->width=ima->columns;
   interpolated->height=ima->rows;
@@ -256,16 +256,18 @@ gboolean load_file(gpointer userdata) {
   interpolated->img=i_img;
   for (i=0; i < 0x10000; i++) interpolated->curve[i] = i;
 /*       X3F_raw_interpolate(x3f); */
-  if (ima->imageDataType == X3F_DATA_TYPE_RAW){
+/*   create_floatimage(ima); */
+/*   if (ima->imageDataType == X3F_DATA_TYPE_RAW_SD1) { */
+  if (ima->dataFormat == X3F_DATA_FORMAT_TRUE_RAW) {
 	/*     if (ima->dataFormat == X3F_DATA_FORMAT_RAW) */
 	simple_coeff(interpolated, 0);
-	interpolate(interpolated, x3f);
-  } else {
-	simple_coeff(interpolated, 1);
 	foveon_f20_interpolate(interpolated, x3f);
+ } else {
+	simple_coeff(interpolated, 0);
+	interpolate(interpolated, x3f);
   }
-  convert_to_rgb(interpolated, 1);
-  apply_gamma(interpolated, 8, 1.0, x3f_file->filename);
+   convert_to_rgb(interpolated, 1);
+  apply_gamma(interpolated, 16, 1.0, x3f_file->filename);
 
   renderer = gtk_cell_renderer_text_new();
   column = gtk_tree_view_column_new_with_attributes("Property",
@@ -380,7 +382,7 @@ gboolean load_file(gpointer userdata) {
 	  rawImg=tmp;
 	}
     
-	/*     rawImg_small=gdk_pixbuf_scale_simple(rawImg, gdk_pixbuf_get_width(rawImg)/4, gdk_pixbuf_get_height(rawImg)/4, GDK_INTERP_HYPER); */
+	    rawImg_small=gdk_pixbuf_scale_simple(rawImg, gdk_pixbuf_get_width(rawImg)/4, gdk_pixbuf_get_height(rawImg)/4, GDK_INTERP_HYPER);
     /*  if((fp = fopen("test.tiff", "wb")) == NULL) {
 		printf("Cannot open file\n");
 		}*/
@@ -388,7 +390,7 @@ gboolean load_file(gpointer userdata) {
 	/*if( fclose( fp ))
 	  printf("File: close error.\n");*/
 
-    raw=gtk_image_new_from_pixbuf(rawImg);
+    raw=gtk_image_new_from_pixbuf(rawImg_small);
     holder= (GtkWidget *) gtk_builder_get_object (p_builder, "rawWindow" );
     gtk_container_add(GTK_CONTAINER(holder), raw);
     gtk_widget_show(raw);
