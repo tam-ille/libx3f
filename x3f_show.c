@@ -63,7 +63,7 @@ CMb_HEADER *get_camf_header (CAMF *camf, const char *name) {
     if (strcmp (name, pos+sget4(pos+12))) continue;
 	return (CMb_HEADER *)pos;
   }
-  printf("camf entry %s not found!!\n", name);
+/*   printf("camf entry %s not found!!\n", name); */
   return NULL;
 
 }
