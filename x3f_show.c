@@ -97,11 +97,9 @@ void add_camf(X3F *x3f, GtkWidget *tree){
     if (strncmp (pos, "CMb", 3)) break;
     if (pos[3] != 'P') continue;
     if (strcmp ("IncludeBlocks", pos+sget4(pos+12))) continue;
-	printf("IncludeBlocks found\n");
 	/* IncludeBlocks found */
     cp = pos + sget4(pos+16);
     j = num = sget4(cp); /* number of entries */
-	/* 	data=(char (**))calloc(num, sizeof (*data)); */
     dp = pos + sget4(cp+4);
 
     while (j--) {
@@ -118,7 +116,6 @@ void add_camf(X3F *x3f, GtkWidget *tree){
 						 1, conv.atype,
 						 -1);
 
-/* 	  printf("%s\n", dp+sget4(cp)); */
     }
   }
 
@@ -134,8 +131,8 @@ void update_camf_view(GtkWidget *widget, X3F *x3f){
   CAMF_LIST_ENTRY *camf_entry;
   uint32_t i, c, v, valueCount, count, type;
   GString *string;
-  CMbM *cmbm;
-  PARAMETERS *params;
+/*   CMbM *cmbm; */
+/*   PARAMETERS *params; */
   int32_t *matrix;
   float *fmatrix;
   CMb_HEADER *header;
@@ -156,7 +153,6 @@ void update_camf_view(GtkWidget *widget, X3F *x3f){
 	/* act accordingly depending of CAMFsubsectionID */
 	if (!(header= get_camf_header(camf, value))) return;
 	pos=(char *)header+header->dataOffset;
-	/* 	matrix=X3F_foveon_camf_matrix(camf, dim, value); */
 
     switch (header->CAMFsubsectionID) {
     case X3F_CMbT:
@@ -179,8 +175,7 @@ void update_camf_view(GtkWidget *widget, X3F *x3f){
 	  }
       break;
     case X3F_CMbM:
-	  /*       cmbm=camf_entry->value; */
-      string=g_string_new("Matrix ");
+     string=g_string_new("Matrix ");
 	  count=sget4(pos+4);
 	  type=sget4(pos);
       g_string_append_printf(string, "%s\nMatrix dimension: %d\tMatrix data type: %d\n", value, count, type);
@@ -304,9 +299,6 @@ gboolean load_file(gpointer userdata) {
 
   X3F_decode_raw(x3f->raw->datas);
 
-  /*   num=X3F_foveon_camf_list(x3f); */
-  /*   printf("%d camf entries\n", num); */
-  /*   printf("cmaf_entry: %s\n", x3f->camf_list[0]); */
   ima=(IMA *)x3f->raw->datas;
   i_img= (uint16_t (*)[4]) calloc (ima->rows*ima->columns*4, sizeof (uint16_t));
   memcpy(i_img, ima->imageData, ima->rows*ima->columns*4*sizeof (uint16_t));

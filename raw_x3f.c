@@ -619,39 +619,6 @@ void X3F_decode_camf4(CAMF *camf, uint dataSize){
   free(tmp);
 }
 
-int X3F_foveon_camf_list ( X3F *x3f) {
-  unsigned idx, num;
-  int i=0,j;
-  char *pos, *cp, *dp;
-  char **data; /* should be part of x3f */
-  
-  CAMF *camf;
-  DIR_ENTRY *section;
-
-  section=X3F_get_section(x3f, X3F_CAMF);
-  camf=section->datas;
-
-  for (idx=0; idx < camf->dataSize; idx += sget4(pos+8)) {
-    pos = camf->camf_data + idx;
-    if (strncmp (pos, "CMb", 3)) break;
-    if (pos[3] != 'P') continue;
-    if (strcmp ("IncludeBlocks", pos+sget4(pos+12))) continue;
-	printf("IncludeBlocks found\n");
-	/* IncludeBlocks found */
-    cp = pos + sget4(pos+16);
-    j = num = sget4(cp); /* number of entries */
-	data=(char (**))calloc(num, sizeof (*data));
-    dp = pos + sget4(cp+4);
-    while (j--) {
-      cp += 8;
-/* 	  data[i++]= strdup(  dp+sget4(cp)/\*  , strlen(dp+sget4(cp)) *\/)
-   ; */
-/* 	  printf("%s\n", dp+sget4(cp)); */
-    }
-  }
-  return num;
-}
-
 const char * X3F_foveon_camf_param (CAMF *camf, const char *block, const char *param)
 {
   unsigned idx, num;
