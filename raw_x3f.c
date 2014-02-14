@@ -395,7 +395,7 @@ CAMF_LIST_ENTRY *X3F_fill_camf_list(uint dataSize, uint8_t *camf_data, CAMF_LIST
       matrix=malloc(sizeof(*matrix)*valuesCount);
       if (!dataType ||dataType==6)
  	for (i=0; i<valuesCount;i++)
-	  matrix[i].ui_16=*((uint16_t *)(dataPtr+dataStartOffset+i*sizeof(uint16_t)))&0xffff;
+	  matrix[i].ui_32=*((uint32_t *)(dataPtr+dataStartOffset+i*sizeof(uint16_t)))&0xffff;
      else
 	memcpy(matrix, dataPtr+dataStartOffset, sizeof(*matrix)*valuesCount);
        
@@ -621,7 +621,8 @@ IMA *X3F_read_ima(FILE *fp, uint dataLength){
     free(ima);
     return NULL;
   }
-
+  ima->max[0]=ima->max[1]=ima->max[2]=0;
+  ima->min[0]=ima->min[1]=ima->min[1]=65535;
   imageDataSize=dataLength-IMA_HEADER_SIZE;
   if (ima->dataFormat == X3F_DATA_FORMAT_RAW || ima->dataFormat==X3F_DATA_FORMAT_HUFFMAN_PREVIEW)
     imageDataSize -= ima->rows*sizeof(*ima->rowOffsets);
@@ -835,7 +836,8 @@ int X3F_decode_raw(IMA *raw){
 
   if ((raw->flags & DECODED_IMAGE)== DECODED_IMAGE)
     return 1;
-
+  memset(raw->max, 0, sizeof raw->max);
+  memset(raw->min, 4096, sizeof raw->min);
   if (raw->dataFormat==X3F_DATA_FORMAT_RAW){
     /* Huffman compressed raw (SD9/10/14) */
     uint32_t *huff;
@@ -887,8 +889,8 @@ int X3F_decode_raw(IMA *raw){
 		}
 		for (c=0; c <3; c++) {
 		  decoded_raw[row*raw->columns+col][c] = pix[c];
-		  if (pix[c]>raw->max[c]) raw->max[c]=pix[c];
-		  if (pix[c]<raw->min[c]) raw->min[c]=pix[c];
+		  if (pix[c]>raw->max[c]&&pix[c]>0) raw->max[c]=pix[c];
+		  if (pix[c]<raw->min[c]) raw->min[c]=pix[c]>0?pix[c]:0;
 		}
       }
     }
@@ -1114,11 +1116,11 @@ int X3F_raw_interpolate(X3F *x3f){
 /*   printf ("DATA Type:%s\n DATA Format: %s", ima->imageDataType, ima->dataFormat); */
   if (ima->imageDataType == X3F_DATA_TYPE_RAW) {
     if (ima->dataFormat == X3F_DATA_FORMAT_RAW)
-      X3F_foveon_interpolate(x3f);
+      interpolate(x3f);
     else
-      X3F_foveon_TRUE_interpolate(x3f);
+      foveon_f20_interpolate(x3f);
   } else if (ima->imageDataType == X3F_DATA_TYPE_RAW_SD1)
-    X3F_foveon_F20_interpolate(x3f);
+    foveon_f20_interpolate(x3f);
   else
     X3F_ERROR("Unknown raw data type\n");
   return 1;
