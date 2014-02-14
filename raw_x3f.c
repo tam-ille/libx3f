@@ -14,6 +14,15 @@
 #include <jpeglib.h>
 #include "raw_x3f.h"
 
+unsigned sget4 (unsigned char *s)
+{
+  /*   if (order == 0x4949) */
+  return s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
+  /*   else */
+/*       return s[0] << 24 | s[1] << 16 | s[2] << 8 | s[3]; */
+}
+#define sget4(s) sget4((unsigned char *)s)
+
 X3F *X3F_init(void){
   X3F *x3f=NULL;
 
@@ -607,6 +616,70 @@ void X3F_decode_camf4(CAMF *camf, uint dataSize){
   } /* end row */
   camf->camf_data=decoded_data;
   free(tmp);
+}
+
+const char * X3F_foveon_camf_param (CAMF *camf, const char *block, const char *param)
+{
+  unsigned idx, num;
+  char *pos, *cp, *dp;
+  char *data=data;
+
+  for (idx=0; idx < camf->dataSize; idx += sget4(pos+8)) {
+    pos = camf->camf_data + idx;
+    if (strncmp (pos, "CMb", 3)) break;
+    if (pos[3] != 'P') continue;
+    if (strcmp (block, pos+sget4(pos+12))) continue;
+    cp = pos + sget4(pos+16);
+    num = sget4(cp);
+    dp = pos + sget4(cp+4);
+    while (num--) {
+      cp += 8;
+      if (!strcmp (param, dp+sget4(cp)))
+		return dp+sget4(cp+4);
+    }
+  }
+  return 0;
+}
+
+void * X3F_foveon_camf_matrix (CAMF *camf, unsigned dim[3], const char *name)
+{
+  unsigned i, idx, type, ndim, size, *mat;
+  char *pos, *cp, *dp;
+  double dsize;
+
+  for (idx=0; idx < camf->dataSize; idx += sget4(pos+8)) {
+    pos = camf->camf_data + idx;
+    if (strncmp (pos, "CMb", 3)) break;
+    if (pos[3] != 'M') continue;
+/* 	str=malloc(sizeof(*str*strlen(pos+sget4(pos+12)); */
+/* 	printf("%s\n", pos+sget4(pos+12)); */
+    if (strcmp (name, pos+sget4(pos+12))) continue;
+    dim[0] = dim[1] = dim[2] = 1;
+    cp = pos + sget4(pos+16);
+    type = sget4(cp);
+    if ((ndim = sget4(cp+4)) > 3) break;
+    dp = pos + sget4(cp+8);
+    for (i=ndim; i--; ) {
+      cp += 12;
+      dim[i] = sget4(cp);
+    }
+	if (type && type != 6){
+	  if ((dsize = (double) dim[0]*dim[1]*dim[2]) > camf->dataSize/4) break;
+	  mat = (unsigned *) malloc ((size = dsize) * 4);
+	/*     merror (mat, "foveon_camf_matrix()"); */
+	  for (i=0; i < size; i++)
+		mat[i] = sget4(dp + i*4);
+	} else {
+	  if ((dsize = (double) dim[0]*dim[1]*dim[2]) > camf->dataSize/2) break;
+	  mat = (unsigned *) malloc ((size = dsize) * 4);
+	  for (i=0; i < size; i++)/* { */
+		mat[i] = sget4(dp + i*2) & 0xffff;
+/* 		printf("%d\n", mat[i]);} */
+ 	}
+   return mat;
+  }
+  fprintf (stderr,_("\"%s\" matrix not found!\n"), name);
+  return 0;
 }
 
 IMA *X3F_read_ima(FILE *fp, uint dataLength){

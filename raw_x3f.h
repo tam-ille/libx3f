@@ -430,6 +430,9 @@ int X3F_foveon_TRUE_interpolate(X3F *x3f);
 int X3F_foveon_F20_interpolate(X3F *x3f);
 int X3F_raw_interpolate(X3F *x3f);
 char *X3F_foveon_get_property(PROPERTY *prop_list, char *name);
+void * X3F_foveon_camf_matrix (CAMF *camf, unsigned dim[3], const char *name);
+const char * X3F_foveon_camf_param (CAMF *camf, const char *block, const char *param);
+
 /* char *foveon_get_param(CAMF_LIST_ENTRY *camf_list, char *blockName, const char *name); */
 /* CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name); */
 

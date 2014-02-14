@@ -347,10 +347,10 @@ gboolean load_file(gpointer userdata) {
 
     for (i=0;i<count;i++){
       for (c=0;c<3;c++){
-		if (((temp[i][c]/* interpolated->curve[temp[i][c]] */ >> 8)>255))
+		if (((temp[i][c] >> 8)>255))
 		  img24[i*3+c]=255;
 		else
-		  img24[i*3+c]=/* interpolated->curve[ */temp[i][c]/* ] */>>8;
+		  img24[i*3+c]=temp[i][c] >>8;
 	  }
     }
     tmp=gdk_pixbuf_new_from_data(img24, GDK_COLORSPACE_RGB, FALSE, 8,
