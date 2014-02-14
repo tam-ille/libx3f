@@ -399,7 +399,7 @@ typedef struct {
   DIR_ENTRY *preview; /* a pointer to the last recorded preview (maybe not full size preview) */
   DIR_ENTRY *raw; /* a pointer to the last recorded raw */
   PROPERTY *property; /* only a chained list of pointer to prop section->data */
-  CAMF_LIST_ENTRY *camf_list; 
+/*   CAMF_LIST_ENTRY *camf_list;  */
   uint32_t dir_offset; /* offset of the directory section (4 last bytes of the X3F file) */
 }  X3F;
 
@@ -414,7 +414,7 @@ void X3F_free(X3F *x3f);
 X3F *X3F_init(void);
 unsigned char *X3F_jpeg_decompress_image(unsigned char *data, uint32_t datasize);
 HEADER *X3F_parse_header(FILE *fp);
-CAMF_LIST_ENTRY *X3F_fill_camf_list (uint dataSize, uint8_t *camf_data, CAMF_LIST_ENTRY *camf_list);
+/* CAMF_LIST_ENTRY *X3F_fill_camf_list (uint dataSize, uint8_t *camf_data, CAMF_LIST_ENTRY *camf_list); */
 CAMF *X3F_read_camf(FILE *fp, uint32_t dataLength);
 DIR_ENTRY *X3F_read_dir_entry(FILE *fp);
 DIR_SECTION *X3F_read_dir_section(FILE *fp);
@@ -422,15 +422,15 @@ IMA *X3F_read_ima(FILE *fp, uint dataLength);
 PROP *X3F_read_prop(FILE *fp, X3F *x3f, uint32_t dataLength);
 X3F *X3F_load_full_x3f(char *filename);
 DIR_ENTRY *X3F_get_section(X3F *x3f, uint32_t sectionType);
-void f20_color_correction(X3F *x3f);
-void color_correction(X3F *x3f);
-MATRIX *X3F_get_matrix(CAMF_LIST_ENTRY *camf_list, char *entry_name);
+/* void f20_color_correction(X3F *x3f); */
+/* void color_correction(X3F *x3f); */
+/* MATRIX *X3F_get_matrix(CAMF_LIST_ENTRY *camf_list, char *entry_name); */
 int X3F_foveon_interpolate(X3F *x3f);
 int X3F_foveon_TRUE_interpolate(X3F *x3f);
 int X3F_foveon_F20_interpolate(X3F *x3f);
 int X3F_raw_interpolate(X3F *x3f);
-char *foveon_get_property(PROPERTY *prop_list, char *name);
-char *foveon_get_param(CAMF_LIST_ENTRY *camf_list, char *blockName, const char *name);
-CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name);
+char *X3F_foveon_get_property(PROPERTY *prop_list, char *name);
+/* char *foveon_get_param(CAMF_LIST_ENTRY *camf_list, char *blockName, const char *name); */
+/* CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name); */
 
 #endif /* __LIB_X3F__ */

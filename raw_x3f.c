@@ -29,7 +29,7 @@ X3F *X3F_init(void){
   x3f->preview=NULL;
   x3f->raw=NULL;
   x3f->property=NULL;
-  x3f->camf_list=NULL;
+/*   x3f->camf_list=NULL; */
   x3f->dir_offset=0;
 
   return x3f;
@@ -93,43 +93,43 @@ void X3F_free(X3F *x3f){
     }
     free(property); /* don't forget the last node */
   }
-  if(x3f->camf_list) {
-    CAMF_LIST_ENTRY *entry, *index;
-    CMbM *cmbm;
-    PARAMETERS *params;
-    for (entry=x3f->camf_list, index=entry->next;index!=NULL;index=entry->next){
-      if (entry->CAMFtype==X3F_CMbM){
-	cmbm=(CMbM *)entry->value;
-	free(cmbm->planeElements);
-	free(cmbm->matrix);
-      } else if (entry->CAMFtype==X3F_CMbP){
-	params=(PARAMETERS *)entry->value;
-	for (i=0; i<(int)entry->count; i++){
-	  free(params[i].name);
-	  free(params[i].value);
-	}
-      }
-      free(entry->name);
-      free(entry->value);
-      free(entry);
-      entry=index;
-    }
-    if (entry->CAMFtype==X3F_CMbM){
-      cmbm=(CMbM *)entry->value;
-      free(cmbm->planeElements);
-      free(cmbm->matrix);
-    } else if (entry->CAMFtype==X3F_CMbP){
-      params=(PARAMETERS *)entry->value;
-      for (i=0; i<(int)entry->count; i++){
-	free(params[i].name);
-	free(params[i].value);
-      }
-    }
+/*   if(x3f->camf_list) { */
+/*     CAMF_LIST_ENTRY *entry, *index; */
+/*     CMbM *cmbm; */
+/*     PARAMETERS *params; */
+/*     for (entry=x3f->camf_list, index=entry->next;index!=NULL;index=entry->next){ */
+/*       if (entry->CAMFtype==X3F_CMbM){ */
+/* 	cmbm=(CMbM *)entry->value; */
+/* 	free(cmbm->planeElements); */
+/* 	free(cmbm->matrix); */
+/*       } else if (entry->CAMFtype==X3F_CMbP){ */
+/* 	params=(PARAMETERS *)entry->value; */
+/* 	for (i=0; i<(int)entry->count; i++){ */
+/* 	  free(params[i].name); */
+/* 	  free(params[i].value); */
+/* 	} */
+/*       } */
+/*       free(entry->name); */
+/*       free(entry->value); */
+/*       free(entry); */
+/*       entry=index; */
+/*     } */
+/*     if (entry->CAMFtype==X3F_CMbM){ */
+/*       cmbm=(CMbM *)entry->value; */
+/*       free(cmbm->planeElements); */
+/*       free(cmbm->matrix); */
+/*     } else if (entry->CAMFtype==X3F_CMbP){ */
+/*       params=(PARAMETERS *)entry->value; */
+/*       for (i=0; i<(int)entry->count; i++){ */
+/* 	free(params[i].name); */
+/* 	free(params[i].value); */
+/*       } */
+/*     } */
 
-    free(entry->name);
-    free(entry->value);
-    free(entry); /* don't forget the last node */
-  }
+/*     free(entry->name); */
+/*     free(entry->value); */
+/*     free(entry); /\* don't forget the last node *\/ */
+/*   } */
   free(x3f);
 }
 
@@ -279,151 +279,153 @@ PROP *X3F_read_prop(FILE *fp, X3F *x3f, uint32_t dataLength) {
   return prop;
 }
 
-CAMF_LIST_ENTRY *X3F_fill_camf_list(uint dataSize, uint8_t *camf_data, CAMF_LIST_ENTRY *camf_list){
-  CMb_HEADER *CMb_entry=NULL;
-/*   CAMF_LIST_ENTRY *camf_list=NULL; */
-  uint n=0;
-  uint8_t *dataPtr=camf_data;
+/* OBSOLETE ! do not use anymore */
 
-  while(dataPtr<camf_data+dataSize){
-    char *name;
-    CAMF_LIST_ENTRY *new_list_entry=NULL;
+/* CAMF_LIST_ENTRY *X3F_fill_camf_list(uint dataSize, uint8_t *camf_data, CAMF_LIST_ENTRY *camf_list){ */
+/*   CMb_HEADER *CMb_entry=NULL; */
+/* /\*   CAMF_LIST_ENTRY *camf_list=NULL; *\/ */
+/*   uint n=0; */
+/*   uint8_t *dataPtr=camf_data; */
 
-/*     dataPtr+=pos; */
-    CMb_entry=(CMb_HEADER *)dataPtr;
-    if ((CMb_entry->CAMFsubsectionID & 0xffffff)!= X3F_CMb) {
-      printf("Oups: %#x\n",CMb_entry->CAMFsubsectionID);
-      break;
-    }
+/*   while(dataPtr<camf_data+dataSize){ */
+/*     char *name; */
+/*     CAMF_LIST_ENTRY *new_list_entry=NULL; */
 
-      /*If we do a memcpy, we will be able to free the camf_data array and only keep valid camf entries */
-    /* Whatever, do we really need to store whole camf data blocks? Maybe easier if we want to write x3f files? */
-/*     memcpy(CMb_entry, elem, entryLength); */
+/* /\*     dataPtr+=pos; *\/ */
+/*     CMb_entry=(CMb_HEADER *)dataPtr; */
+/*     if ((CMb_entry->CAMFsubsectionID & 0xffffff)!= X3F_CMb) { */
+/*       printf("Oups: %#x\n",CMb_entry->CAMFsubsectionID); */
+/*       break; */
+/*     } */
 
-    if (!(name=malloc(sizeof(*name)*strlen((char *)dataPtr+CMb_entry->nameOffset)))){
-	X3F_MEM_ERROR("X3F_fill_camf_list", "new_list_entry->name");
-	free(new_list_entry);
-	return camf_list;
-    }
-    name=strdup((char *)dataPtr+CMb_entry->nameOffset);
-/*     printf("CAMF entry name is %s\n", name); */
-    if (!(strcmp(name, "IncludeBlocks"))){
-      free(name);
-      dataPtr+=CMb_entry->length;
-      continue;
-    }
-    /* we should first check for duplicate entries in the list */
-    /* normaly, only one CAMF section is to be found in the X3F file. But the specs give the ability to have more than one */
-    /* We handle this case here */
-    for (new_list_entry=camf_list; new_list_entry!=NULL; new_list_entry=new_list_entry->next){
-      if (!(strcmp(new_list_entry->name, name))){
-	free(name);
-	break;
-      }
-    }
-    if (new_list_entry){ 
-      printf("We found a camf block with duplicate name: %s,\nWe will ignore it\n", new_list_entry->name);
-      dataPtr+=CMb_entry->length;
-      continue;
-    }
+/*       /\*If we do a memcpy, we will be able to free the camf_data array and only keep valid camf entries *\/ */
+/*     /\* Whatever, do we really need to store whole camf data blocks? Maybe easier if we want to write x3f files? *\/ */
+/* /\*     memcpy(CMb_entry, elem, entryLength); *\/ */
 
-    /* Create a new list_entry */
-    if (!(new_list_entry=malloc(sizeof(*new_list_entry)))) {
-      X3F_MEM_ERROR("X3F_fill_camf_list", "CMb_entry");
-      free(name);
-      return camf_list;
-    }
-    new_list_entry->next=NULL;
-    new_list_entry->CAMFtype=CMb_entry->CAMFsubsectionID;
-    new_list_entry->name=name;
-    new_list_entry->count=0;
+/*     if (!(name=malloc(sizeof(*name)*strlen((char *)dataPtr+CMb_entry->nameOffset)))){ */
+/* 	X3F_MEM_ERROR("X3F_fill_camf_list", "new_list_entry->name"); */
+/* 	free(new_list_entry); */
+/* 	return camf_list; */
+/*     } */
+/*     name=strdup((char *)dataPtr+CMb_entry->nameOffset); */
+/* /\*     printf("CAMF entry name is %s\n", name); *\/ */
+/*     if (!(strcmp(name, "IncludeBlocks"))){ */
+/*       free(name); */
+/*       dataPtr+=CMb_entry->length; */
+/*       continue; */
+/*     } */
+/*     /\* we should first check for duplicate entries in the list *\/ */
+/*     /\* normaly, only one CAMF section is to be found in the X3F file. But the specs give the ability to have more than one *\/ */
+/*     /\* We handle this case here *\/ */
+/*     for (new_list_entry=camf_list; new_list_entry!=NULL; new_list_entry=new_list_entry->next){ */
+/*       if (!(strcmp(new_list_entry->name, name))){ */
+/* 	free(name); */
+/* 	break; */
+/*       } */
+/*     } */
+/*     if (new_list_entry){  */
+/*       printf("We found a camf block with duplicate name: %s,\nWe will ignore it\n", new_list_entry->name); */
+/*       dataPtr+=CMb_entry->length; */
+/*       continue; */
+/*     } */
 
-    if ((CMb_entry->CAMFsubsectionID&0xffffffff)== X3F_CMbT){
-      new_list_entry->count=*((uint32_t *)(dataPtr+CMb_entry->dataOffset));
-      new_list_entry->value=(void *)strndup((char *)(dataPtr+CMb_entry->dataOffset+4), new_list_entry->count);
-/*       printf("Technical: %s\n", (char *)new_list_entry->value); */
-    } else if ((CMb_entry->CAMFsubsectionID&0xffffffff)== X3F_CMbP){
-      /* we should handle the "IncludeBlocks" as a special case */
-      uint i, paramCount;
-      PAIRS_OFFSETS *offsets;
-      PARAMETERS *params;
-      uint32_t *cmbp_head, dataLength;
+/*     /\* Create a new list_entry *\/ */
+/*     if (!(new_list_entry=malloc(sizeof(*new_list_entry)))) { */
+/*       X3F_MEM_ERROR("X3F_fill_camf_list", "CMb_entry"); */
+/*       free(name); */
+/*       return camf_list; */
+/*     } */
+/*     new_list_entry->next=NULL; */
+/*     new_list_entry->CAMFtype=CMb_entry->CAMFsubsectionID; */
+/*     new_list_entry->name=name; */
+/*     new_list_entry->count=0; */
 
-      cmbp_head=(uint32_t *)(dataPtr+CMb_entry->dataOffset);
-      paramCount=cmbp_head[0];
-      dataLength=CMb_entry->length-cmbp_head[1]; /* cmbp_head[1] is the start of parameters offset */
-/*       printf("Founded %d cmbp->numberOfParameters for a size of %d bytes\n", cmbp_head[0], dataLength ); */
-/*       if (!(offsets=malloc(sizeof(*offsets)*cmbp->numberOfParameters))){ */
-      if (!(params=malloc(sizeof(*params)*paramCount))){
-	X3F_MEM_ERROR("X3F_fill_camf_list", "CMbP offsets table");
-	free(new_list_entry->name);
-	free(new_list_entry);
-	return camf_list;
-      }
+/*     if ((CMb_entry->CAMFsubsectionID&0xffffffff)== X3F_CMbT){ */
+/*       new_list_entry->count=*((uint32_t *)(dataPtr+CMb_entry->dataOffset)); */
+/*       new_list_entry->value=(void *)strndup((char *)(dataPtr+CMb_entry->dataOffset+4), new_list_entry->count); */
+/* /\*       printf("Technical: %s\n", (char *)new_list_entry->value); *\/ */
+/*     } else if ((CMb_entry->CAMFsubsectionID&0xffffffff)== X3F_CMbP){ */
+/*       /\* we should handle the "IncludeBlocks" as a special case *\/ */
+/*       uint i, paramCount; */
+/*       PAIRS_OFFSETS *offsets; */
+/*       PARAMETERS *params; */
+/*       uint32_t *cmbp_head, dataLength; */
+
+/*       cmbp_head=(uint32_t *)(dataPtr+CMb_entry->dataOffset); */
+/*       paramCount=cmbp_head[0]; */
+/*       dataLength=CMb_entry->length-cmbp_head[1]; /\* cmbp_head[1] is the start of parameters offset *\/ */
+/* /\*       printf("Founded %d cmbp->numberOfParameters for a size of %d bytes\n", cmbp_head[0], dataLength ); *\/ */
+/* /\*       if (!(offsets=malloc(sizeof(*offsets)*cmbp->numberOfParameters))){ *\/ */
+/*       if (!(params=malloc(sizeof(*params)*paramCount))){ */
+/* 	X3F_MEM_ERROR("X3F_fill_camf_list", "CMbP offsets table"); */
+/* 	free(new_list_entry->name); */
+/* 	free(new_list_entry); */
+/* 	return camf_list; */
+/*       } */
       
-      offsets=(PAIRS_OFFSETS *)(dataPtr+CMb_entry->dataOffset+sizeof(cmbp_head)); 
-      for (i=0;i<paramCount;i++){
-	params[i].name=strdup((char *)dataPtr+cmbp_head[1]+offsets[i].nameOffset);
-	params[i].value=strdup((char *)dataPtr+cmbp_head[1]+offsets[i].valueOffset);
-      }
-      new_list_entry->count=paramCount;
-      new_list_entry->value=(void *)params;
-    } else if ((CMb_entry->CAMFsubsectionID&0xffffffff)== X3F_CMbM){
-      /* header and name are OK */
-      CMbM *cmbm;
-      uint i=0/* , c=0,v */;
-      uint8_t*cmbmPtr=dataPtr+CMb_entry->dataOffset;
-      uint32_t matrixDimension, dataStartOffset, dataType, valuesCount=1;
-      uint32_t *planeElements;
-      MATRIX_INFOS *matrixInfos;
-      MATRIX *matrix;
+/*       offsets=(PAIRS_OFFSETS *)(dataPtr+CMb_entry->dataOffset+sizeof(cmbp_head));  */
+/*       for (i=0;i<paramCount;i++){ */
+/* 	params[i].name=strdup((char *)dataPtr+cmbp_head[1]+offsets[i].nameOffset); */
+/* 	params[i].value=strdup((char *)dataPtr+cmbp_head[1]+offsets[i].valueOffset); */
+/*       } */
+/*       new_list_entry->count=paramCount; */
+/*       new_list_entry->value=(void *)params; */
+/*     } else if ((CMb_entry->CAMFsubsectionID&0xffffffff)== X3F_CMbM){ */
+/*       /\* header and name are OK *\/ */
+/*       CMbM *cmbm; */
+/*       uint i=0/\* , c=0,v *\/; */
+/*       uint8_t*cmbmPtr=dataPtr+CMb_entry->dataOffset; */
+/*       uint32_t matrixDimension, dataStartOffset, dataType, valuesCount=1; */
+/*       uint32_t *planeElements; */
+/*       MATRIX_INFOS *matrixInfos; */
+/*       MATRIX *matrix; */
 
-      dataType=*(uint32_t *)(cmbmPtr);
-      matrixDimension=*(uint32_t *)(cmbmPtr+4);
-      dataStartOffset=*(uint32_t *)(cmbmPtr+8);
+/*       dataType=*(uint32_t *)(cmbmPtr); */
+/*       matrixDimension=*(uint32_t *)(cmbmPtr+4); */
+/*       dataStartOffset=*(uint32_t *)(cmbmPtr+8); */
 
-      new_list_entry->count=matrixDimension;
-      /* Do we need to keep infos such as name of arrays? */
-      matrixInfos=(MATRIX_INFOS *)(cmbmPtr+12);
+/*       new_list_entry->count=matrixDimension; */
+/*       /\* Do we need to keep infos such as name of arrays? *\/ */
+/*       matrixInfos=(MATRIX_INFOS *)(cmbmPtr+12); */
 
-      planeElements=malloc(sizeof(*planeElements)*matrixDimension);
-      for (i=0; i<matrixDimension;i++){
-	planeElements[i]=matrixInfos[i].count;
-	valuesCount*=planeElements[i];
-      }
+/*       planeElements=malloc(sizeof(*planeElements)*matrixDimension); */
+/*       for (i=0; i<matrixDimension;i++){ */
+/* 	planeElements[i]=matrixInfos[i].count; */
+/* 	valuesCount*=planeElements[i]; */
+/*       } */
 
-      matrix=malloc(sizeof(*matrix)*valuesCount);
-      if (!dataType ||dataType==6)
- 	for (i=0; i<valuesCount;i++)
-	  matrix[i].ui_32=*((uint32_t *)(dataPtr+dataStartOffset+i*sizeof(uint16_t)))&0xffff;
-     else
-	memcpy(matrix, dataPtr+dataStartOffset, sizeof(*matrix)*valuesCount);
+/*       matrix=malloc(sizeof(*matrix)*valuesCount); */
+/*       if (!dataType ||dataType==6) */
+/*  	for (i=0; i<valuesCount;i++) */
+/* 	  matrix[i].ui_32=*((uint32_t *)(dataPtr+dataStartOffset+i*sizeof(uint16_t)))&0xffff; */
+/*      else */
+/* 	memcpy(matrix, dataPtr+dataStartOffset, sizeof(*matrix)*valuesCount); */
        
-      if (!(cmbm=malloc(sizeof(*cmbm)))) {
-	X3F_MEM_ERROR("X3F_fill_camf_list", "CMb_entry");
-	free(name);
-	return camf_list;
-      }
-      cmbm->dataType=dataType;
-      cmbm->planeElements=planeElements;
-      cmbm->matrix=matrix;
+/*       if (!(cmbm=malloc(sizeof(*cmbm)))) { */
+/* 	X3F_MEM_ERROR("X3F_fill_camf_list", "CMb_entry"); */
+/* 	free(name); */
+/* 	return camf_list; */
+/*       } */
+/*       cmbm->dataType=dataType; */
+/*       cmbm->planeElements=planeElements; */
+/*       cmbm->matrix=matrix; */
 
-      new_list_entry->value=cmbm;
+/*       new_list_entry->value=cmbm; */
 
-    }
+/*     } */
 
-    /* add the new entry to the chained list */
-    new_list_entry->next=camf_list;
-    camf_list=new_list_entry;
-    dataPtr+=CMb_entry->length;
+/*     /\* add the new entry to the chained list *\/ */
+/*     new_list_entry->next=camf_list; */
+/*     camf_list=new_list_entry; */
+/*     dataPtr+=CMb_entry->length; */
 
-    /* just for stats */
-    n++;
-  }
-  printf("%d camf entries were found\n", n);
-/*   free(camf_data); */
-  return camf_list;
-}
+/*     /\* just for stats *\/ */
+/*     n++; */
+/*   } */
+/*   printf("%d camf entries were found\n", n); */
+/* /\*   free(camf_data); *\/ */
+/*   return camf_list; */
+/* } */
 
 
 CAMF *X3F_read_camf(FILE *fp, uint32_t dataLength) {
@@ -1034,42 +1036,42 @@ void create_floatimage(IMA *ima)
 	ima->flags |= FLOAT_IMAGE;
 } 
 
+/* OBSOLETE */
+/* CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name){ */
+/*   /\* go through the camf_entries to find the entry with name entry_name *\/ */
+/*   CAMF_LIST_ENTRY *entry; */
 
-CAMF_LIST_ENTRY *X3F_get_camf_entry(CAMF_LIST_ENTRY *camf_list, char *entry_name){
-  /* go through the camf_entries to find the entry with name entry_name */
-  CAMF_LIST_ENTRY *entry;
+/*   if (!entry_name) return NULL; */
+/*   for (entry=camf_list; entry!=NULL; entry=entry->next) */
+/*     if (!(strcmp(entry->name, entry_name))){ */
+/*       /\* we found what we were looking for ! *\/ */
+/*       printf ("Found %s\n", entry->name); */
+/*       break; */
+/*     } */
+/*   return entry;	 */
+/* } */
 
-  if (!entry_name) return NULL;
-  for (entry=camf_list; entry!=NULL; entry=entry->next)
-    if (!(strcmp(entry->name, entry_name))){
-      /* we found what we were looking for ! */
-      printf ("Found %s\n", entry->name);
-      break;
-    }
-  return entry;	
-}
+/* char *foveon_get_param(CAMF_LIST_ENTRY *camf_list, char *blockName, const char *name){ */
+/*   CAMF_LIST_ENTRY *entry; */
+/*   PARAMETERS *params; */
+/*   uint i; */
 
-char *foveon_get_param(CAMF_LIST_ENTRY *camf_list, char *blockName, const char *name){
-  CAMF_LIST_ENTRY *entry;
-  PARAMETERS *params;
-  uint i;
+/*   entry=X3F_get_camf_entry(camf_list, blockName); */
+/*   if (entry !=NULL){ */
+/*     params=(PARAMETERS *)entry->value; */
+/*     for (i=0;i<entry->count;i++){ */
+/*       if (!strcmp(params[i].name,name)){ */
+/* 	printf("Found parameter %s: %s\n", name, params[i].value); */
+/* 	return params[i].value; */
+/*       } */
+/*     } */
+/*   } else { */
+/*     printf("Oups\n"); */
+/*   } */
+/*   return NULL; */
+/* } */
 
-  entry=X3F_get_camf_entry(camf_list, blockName);
-  if (entry !=NULL){
-    params=(PARAMETERS *)entry->value;
-    for (i=0;i<entry->count;i++){
-      if (!strcmp(params[i].name,name)){
-	printf("Found parameter %s: %s\n", name, params[i].value);
-	return params[i].value;
-      }
-    }
-  } else {
-    printf("Oups\n");
-  }
-  return NULL;
-}
-
-char *foveon_get_property(PROPERTY *prop_list, char *name){
+char *X3F_foveon_get_property(PROPERTY *prop_list, char *name){
   char *value=NULL, *prop_name=NULL;
   PROPERTY *prop;
 
@@ -1085,30 +1087,30 @@ char *foveon_get_property(PROPERTY *prop_list, char *name){
   return value;
 }
 
-void get_matrix(CMbM *cmbm, void *ptr,  int valueCount){
-  int i;
-  int32_t *mat;
+/* OBSOLETE */
+/* void get_matrix(CMbM *cmbm, void *ptr,  int valueCount){ */
+/*   int i; */
+/*   int32_t *mat; */
 
-  mat=malloc(valueCount*4);
-  for (i=0; i<valueCount;i++)
-	switch (cmbm->dataType) {
-	case 0:
-	  mat[i]=cmbm->matrix[i].ui_16;
-	  break;
-	case 3:
-	  mat[i]=cmbm->matrix[i].ui_32;
-	  break;
-	case 6:
-	  mat[i]=cmbm->matrix[i].ui_8 & 0xffff;
-	  break;
-	default:
-	  mat[i]=cmbm->matrix[i].ui_32;
-	}
-  memcpy(ptr, mat, valueCount*4);
-  free(mat);
-  return;
-}
-
+/*   mat=malloc(valueCount*4); */
+/*   for (i=0; i<valueCount;i++) */
+/* 	switch (cmbm->dataType) { */
+/* 	case 0: */
+/* 	  mat[i]=cmbm->matrix[i].ui_16; */
+/* 	  break; */
+/* 	case 3: */
+/* 	  mat[i]=cmbm->matrix[i].ui_32; */
+/* 	  break; */
+/* 	case 6: */
+/* 	  mat[i]=cmbm->matrix[i].ui_8 & 0xffff; */
+/* 	  break; */
+/* 	default: */
+/* 	  mat[i]=cmbm->matrix[i].ui_32; */
+/* 	} */
+/*   memcpy(ptr, mat, valueCount*4); */
+/*   free(mat); */
+/*   return; */
+/* } */
 
 int X3F_raw_interpolate(X3F *x3f){
   IMA *ima=(IMA *)x3f->raw->datas;
@@ -1116,373 +1118,16 @@ int X3F_raw_interpolate(X3F *x3f){
 /*   printf ("DATA Type:%s\n DATA Format: %s", ima->imageDataType, ima->dataFormat); */
   if (ima->imageDataType == X3F_DATA_TYPE_RAW) {
     if (ima->dataFormat == X3F_DATA_FORMAT_RAW)
-      interpolate(x3f);
+      x3f_interpolate(x3f);
     else
-      foveon_f20_interpolate(x3f);
+      x3f_trueII_interpolate(x3f);
   } else if (ima->imageDataType == X3F_DATA_TYPE_RAW_SD1)
-    foveon_f20_interpolate(x3f);
+    x3f_trueII_interpolate(x3f);
   else
     X3F_ERROR("Unknown raw data type\n");
   return 1;
 }
 
-/* this is the interpolation process for pre-TRUEII x3f */
-int X3F_foveon_interpolate(X3F *x3f){
-
-/*   bad_pixels_correction(x3f,"BadPixels"); */
-/*   compute_black_point(); */
-/*   compute_white_point(); */
-/*   apply_spatial_gain(); */
-/*   gamma_correction(); */
-/*   apply_colors_curves(); */
-/*   sharpen_reds(); */
-/*   apply_chroma_curve(); */
-/*   X3F_cam2xyz(ima, (char *)x3f->header->whiteBalanceString, x3f->camf_list); */
-/*   X3F_RGBNeutral(ima, (char *)x3f->header->whiteBalanceString, x3f->camf_list); */
-  color_correction(x3f);
-/*   colorspace_transformation(); */
-/*   black_border_suppression(); */
-
-  return 0;
-}
-
-/* this is the interpolation process for TRUEII x3f */
-int X3F_foveon_TRUE_interpolate(X3F *x3f){
-
-/*   bad_pixels_correction(x3f,"BadPixels"); */
-/*   compute_black_point(); */
-/*   compute_white_point(); */
-/*   apply_spatial_gain(); */
-/*   gamma_correction(); */
-/*   apply_colors_curves(); */
-/*   sharpen_reds(); */
-/*   apply_chroma_curve(); */
-/*   X3F_cam2xyz(ima, (char *)x3f->header->whiteBalanceString, x3f->camf_list); */
-  f20_color_correction(x3f);
-/*   colorspace_transformation(); */
-/*   black_border_suppression(); */
-
-  return 0;
-}
-
-/* this is the interpolation process for F20 captor x3f */
-int X3F_foveon_F20_interpolate(X3F *x3f){
-
-  /*   bad_pixels_SD1_correction(x3f,"BadPixelsF20"); */
-  /*   compute_black_point(); */
-  /*   compute_white_point(); */
-  /*   apply_spatial_gain(); */
-  /*   gamma_correction(); */
-  /*   apply_colors_curves(); */
-  /*   sharpen_reds(); */
-  /*   apply_chroma_curve(); */
-  f20_color_correction(x3f);
-  /*   colorspace_transformation(); */
-  /*   black_border_suppression(); */
-
-  return 0;
-}
-
-/* color correction for f20 captors */
-void f20_color_correction(X3F *x3f){
-  IMA *ima=(IMA *)x3f->raw->datas;
-  uint16_t (*image)[3]=(uint16_t (*)[3])ima->imageData;
-  int row, col, c, height, width, i, d;
-  uint16_t *pix;
-  char wbcc[WBCC_MAX_LENGTH], wbgains[WBGAINS_MAX_LENGTH], cmcc[64], cmcm[64];
-  char *prop_value;
-  CAMF_LIST_ENTRY *camf_entry;
-  CMbM *cmbm;
-  float cc[3][3], gain[3];
-
-  width=ima->columns;
-  height=ima->rows;
- 
-  /* Pour SD1/1M & DP2/DPM
-     Il faut regarder dans WhiteBalanceColorCorrections (camf) la matrice à récupérer
-     et dans WhiteBalanceGains (camf) la table à récupérer
-  */
-  /* DP1 should be processed just like TRUEII raws, but the camf name
-     differs
-     WARNING!: SD15 should be processed just as DP1!!
-     SD15 also have ColorMode!!
-  */
-
-    bool f20=TRUE;
-    /* Argh!!! DP1 use TRUE RAW, but camf_name are not the same */
-    /* We should use DP1_%sCCMatrix, DP1_%sWBGain, DP1_CP2_Matrix */
-    /* Also there are no CMCM, CMCC, CorrectColorGain, FNumberGainFact SensorAdjustmentGainFact */
-    /* but we have BaseGain and ISOGainFact */
-
-    printf ("entered X3F_do_color_correction\n");
-    if (ima->imageDataType==X3F_DATA_TYPE_RAW) f20=FALSE;
-
-    camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "WhiteBalanceColorCorrections", (char *)x3f->header->whiteBalanceString));
-    if (!camf_entry)
-    camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "DP1_WhiteBalanceColorCorrections", (char *)x3f->header->whiteBalanceString));
-
-    printf("Got %s camf entry\n", camf_entry->name);
-
-    cmbm=camf_entry->value;
-    /* compute color correction matrix */
-    /* We know ccmatrix is [3][3] */
-    for (c=0,i=0;c<3;c++){
-      for(d=0;d<3;d++) {
-	cc[c][d]=cmbm->matrix[i++].f;
-      }
-    }
-
-    /* CP2_Matrix? */
-/*     if (!f20) camf_entry=X3F_get_camf_entry(x3f->camf_list, "DP1_CP2_Matrix"); */
-/*     else camf_entry=X3F_get_camf_entry(x3f->camf_list, "CP2_Matrix"); */
-/*     printf("Got %s camf entry\n", camf_entry->name); */
-
-/*     cmbm=camf_entry->value; */
-/*     for (c=0,i=0;c<3;c++){ */
-/*       for(d=0;d<3;d++) { */
-/* 	cc[c][d]*=cmbm->matrix[i++].f; */
-/*       } */
-/*     } */
-
-    /* color mode */
-    prop_value=foveon_get_property (x3f->property, "CM_DESC");
-    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "ColorModeCompensations", prop_value))){
-      printf("Got %s camf entry\n", camf_entry->name);
-
-      cmbm=camf_entry->value;
-      /* compute color correction matrix */
-      /* We know ccmatrix is [3][3] */
-      for (c=0,i=0;c<3;c++){
-	for(d=0;d<3;d++) {
-	  cc[c][d]*=cmbm->matrix[i++].f*.45; /* .45 = TCGamma ? */
-	}
-      }
-    }
-    g_free(prop_value);
-      /*CorrectColorGain RR*/
-    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, "CorrectColorGain_RR")){
-      printf("Got %s camf entry\n", camf_entry->name);
-
-      cmbm=camf_entry->value;
-      for (c=0;c<3;c++){
-	cc[0][c]*=cmbm->matrix[c].f;
-      }
-      camf_entry=X3F_get_camf_entry(x3f->camf_list, "CorrectColorGain_GR");
-      printf("Got %s camf entry\n", camf_entry->name);
-
-      cmbm=camf_entry->value;
-      for (c=0;c<3;c++){
-	cc[1][c]*=cmbm->matrix[c].f;
-      }
-      camf_entry=X3F_get_camf_entry(x3f->camf_list, "CorrectColorGain_BR");
-      printf("Got %s camf entry\n", camf_entry->name);
-
-      cmbm=camf_entry->value;
-      for (c=0;c<3;c++){
-	cc[2][c]*=cmbm->matrix[c].f;
-      }
-    }
-
-    printf("values of cc: %f %f %f %f %f %f %f %f %f\n", cc[0][0], cc[1][0], cc[2][0], cc[1][0], cc[1][1], cc[1][2], cc[2][0], cc[2][1], cc[2][2]);
-		
-    /* WBGains */
-    camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "WhiteBalanceGains", (char *)x3f->header->whiteBalanceString));
-    if (!camf_entry) camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "DP1_WhiteBalanceGains", (char *)x3f->header->whiteBalanceString));
-    printf("Got %s camf entry\n", camf_entry->name);
-    cmbm=camf_entry->value;
-    /* compute gain matrix */
-    /* We know gainMatrix is [3] */
-    for (i=0; i<3; i++)
-      gain[i]=cmbm->matrix[i].f;
-    camf_entry=X3F_get_camf_entry(x3f->camf_list, "TempGainFact");
-    printf("Got %s camf entry\n", camf_entry->name);
-    cmbm=camf_entry->value;
-    /* compute gain matrix */
-    /* We know gainMatrix is [3] */
-    for (i=0; i<3; i++)
-      gain[i]*=cmbm->matrix[i].f;
-
-    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, "FNumberGainFact")){
-      printf("Got %s camf entry\n", camf_entry->name);
-      cmbm=camf_entry->value;
-      /* compute gain matrix */
-      /* We know gainMatrix is [3] */
-      for (i=0; i<3; i++)
-	gain[i]*=cmbm->matrix[i].f;
-    }
-    if (camf_entry=X3F_get_camf_entry(x3f->camf_list, "SensorAdjustmentGainFact")){
-      printf("Got %s camf entry\n", camf_entry->name);
-      cmbm=camf_entry->value;
-      /* compute gain matrix */
-      /* We know gainMatrix is [3] */
-      for (i=0; i<3; i++)
-	gain[i]*=cmbm->matrix[i].f;
-    }
-/*     } else { */
-      //	camf_entry=X3F_get_camf_entry(x3f->camf_list, "BaseGain");
-      //printf("Got %s camf entry\n", camf_entry->name);
-      //  cmbm=camf_entry->value;
-      /* compute gain matrix */
-      /* We know gainMatrix is [3] */
-      //  for (i=0; i<3; i++)
-      //			gain[i]*=cmbm->matrix[i].f;
-      //		camf_entry=X3F_get_camf_entry(x3f->camf_list, "ISOGainFact");
-      //printf("Got %s camf entry\n", camf_entry->name);
-      //  cmbm=camf_entry->value;
-      /* compute gain matrix */
-      /* We know gainMatrix is [3] */
-      //  for (i=0; i<3; i++)
-      //			gain[i]/=cmbm->matrix[i].f;
-
-/*     } */
-    /* ColorMode ColorCorrection*/
-    /* We need to get CM_DESC property */
-
-    //camf_entry=X3F_get_camf_entry(x3f->camf_list, "CMCC_landscape");
-    //printf("Got %s camf entry\n", camf_entry->name);
-    //  cmbm=camf_entry->value;
-    /* compute gain matrix */
-    /* We know gainMatrix is [3] */
-    //  for (i=0; i<3; i++)
-    //				gain[i]=cmbm->matrix[i].f;
-
-
-    for (i=0;i<3;i++)
-      for (c=0;c<3;c++) cc[i][c]*=gain[c];
-    
-    printf("values of cc: %f %f %f %f %f %f %f %f %f\n", cc[0][0], cc[1][0], cc[2][0], cc[1][0], cc[1][1], cc[1][2], cc[2][0], cc[2][1], cc[2][2]);
-
-
-
-  /* On veut modifier les valeurs RVB de chaque pixel */
-
-  for (row=0; row<height; row++){
-    pix = image[row*width];
-    for (col=0; col<width; col++){
-      uint16_t val[3];
-      for (c=0; c < 3; c++) val[c]=pix[c];
-      for (c=0; c < 3; c++) {
-	float tmp;
-	tmp=cc[c][0]*val[0]+cc[c][1]*val[1]+cc[c][2]*val[2];
-	if (tmp<0) pix[c]=0; else pix[c]=floor(tmp/* *4095/ima->max[c] */);
-      }
-      pix+=3;
-    }
-  }
-}
-
-void color_correction(X3F *x3f){
-  static const float table[][12] =
-    {{1.4032,-0.2231,-0.1016,-0.5263,1.4816,0.017,-0.0112,0.0183,0.9113 },
-    {3.4032,-0.2231,-0.1016,-0.5263,3.4816,0.017, -0.0112,0.0183,0.4113 }};
-
-  IMA *ima=(IMA *)x3f->raw->datas;
-  uint16_t (*image)[3]=(uint16_t (*)[3])ima->imageData;
-  int row, col, c, height, width, i, j, d;
-  uint16_t *pix;
-  char wbcc[WBCC_MAX_LENGTH], wbgains[WBGAINS_MAX_LENGTH], cmcc[64], cmcm[64];
-  char *param_value;
-  CAMF_LIST_ENTRY *camf_entry;
-  CMbM *cmbm;
-  float cc[3][3], wbc[3][3], last[3][3], div[3], trans[3][3];
-  float  rgb_cam[3][3];
-  double  dsum=0, trsum[3];
-  uint  keep[4], active[4];
-
-
-  for (i=0; i < 3; i++)
-    for (c=0;c<3;c++) rgb_cam[i][c] = table[0][i*3+c];
-
-
-  /* Trim off the black border */
-/*   camf_entry=X3F_get_camf_entry(x3f->camf_list, "KeepImageArea"); */
-/*   cmbm=camf_entry->value; */
-/*   get_matrix(cmbm, keep,4); */
-/*   printf("keep: %d %d %d %d\n", keep[0], keep[1], keep[2], keep[3]); */
-
-/*   camf_entry=X3F_get_camf_entry(x3f->camf_list, "ActiveImageArea"); */
-/*   cmbm=camf_entry->value; */
-/*   get_matrix(cmbm, active, 4); */
-/*   printf("active: %d %d %d %d\n", active[0], active[1], active[2], active[3]); */
-
-/*   active[1] -= keep[1]; */
-/*   active[3] -= 2; */
-/*   i = active[2] - active[0]; */
-/*   for (row=0; row < active[3]-active[1]; row++) */
-/* 	memcpy (image[row*i], image[(row+active[1])*ima->columns+active[0]], */
-/* 			i * sizeof *image); */
-/*   ima->columns = width = i; */
-/*   ima->rows = height = row; */
-  width = ima->columns;
-  height = ima->rows;
-
-  /* /\* DP1 : WhiteBalanceIlluminants * WhiteBalanceCorrections *\/ */
-  /* /\*   float mat[3][3]={{1.325910,0.084080,0.570090}, *\/ */
-  /* /\* 		   {-2.328980,5.665190,-1.810120,}, *\/ */
-  /* /\* 		   {2.327940,-8.260040,8.626610}}; *\/ */
-  /* SD14:  WhiteBalanceIlluminants * WhiteBalanceCorrections */
-  /*   float mat[3][3]={{1.281590,0.105849,0.523760}, */
-  /* 		   {-2.273677,5.651217,-2.115273}, */
-  /* 		   {2.101025,-7.713531,8.711900}}; */
-  camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param(x3f->camf_list, "WhiteBalanceIlluminants", (char *)x3f->header->whiteBalanceString));
-  printf("Got %s camf entry\n", camf_entry->name);
-  cmbm=camf_entry->value;
-  get_matrix(cmbm, cc, 9);
-
-  camf_entry=X3F_get_camf_entry(x3f->camf_list, foveon_get_param (x3f->camf_list, "WhiteBalanceCorrections", (char *)x3f->header->whiteBalanceString));
-  if (camf_entry==NULL) {
-	/* SD15 hack */
-	camf_entry=X3F_get_camf_entry(x3f->camf_list, "CamToXYZ_Flash");
-  }
-  printf("Got %s camf entry\n", camf_entry->name);
-  cmbm=camf_entry->value;
-  get_matrix(cmbm, wbc, 9);
-
-  memset(last, 0, sizeof last);
-  for(i=0;i<3;i++) {
-	for(d=0;d<3;d++) {
-	  for (c=0;c<3;c++) last[i][c]+=cc[i][d]*wbc[d][c];
-	}
-  }
-
-  sprintf(wbcc, "%sRGBNeutral", (char *)x3f->header->whiteBalanceString);
-  camf_entry=X3F_get_camf_entry(x3f->camf_list,  wbcc);
-  cmbm=camf_entry->value;
-  get_matrix(cmbm, div, 3);
-
-  memset (trans, 0, sizeof trans);
-  for (i=0; i < 3; i++)
-    for (j=0; j < 3; j++)
-      FORC3 { trans[i][j] += rgb_cam[i][c] * last[c][j]/*  * div[j] */;
-	}
-/*   FORC3 trsum[c] = trans[c][0] + trans[c][1] + trans[c][2]; */
-/*   dsum = (6*trsum[0] + 11*trsum[1] + 3*trsum[2]) / 20; */
-/*   for (i=0; i < 3; i++) */
-/*     FORC3 last[i][c] = trans[i][c] * dsum / trsum[i]; */
-/*   memset (trans, 0, sizeof trans); */
-/*   for (i=0; i < 3; i++) */
-/*     for (j=0; j < 3; j++){ */
-/*       FORC3 trans[i][j] += (i==c ? 32 : -1) * last[c][j] / 30; */
-/* 	  printf("trans[%d][%d]: %f\n", i, j, trans[i][j]); */
-/* 	} */
-
-  /* On veut modifier les valeurs RVB de chaque pixel */
-
-  for (row=0; row<height; row++){
-    pix = image[row*width];
-    for (col=0; col<width; col++){
-      uint16_t val[3];
-      for (c=0; c < 3; c++) val[c]=pix[c];
-      for (c=0; c < 3; c++) {
-	float tmp;
-	tmp=trans[c][0]*val[0]+trans[c][1]*val[1]+trans[c][2]*val[2];
-	if (tmp<0) pix[c]=0; else pix[c]=floor(tmp*4095/(ima->max[c]));
-      }
-      pix+=3;
-    }
-  }
-}
-	
 X3F *X3F_load_full_x3f(char *filename){
   FILE *fp;
   uint i;
@@ -1592,9 +1237,9 @@ X3F *X3F_load_full_x3f(char *filename){
       CAMF *camf;
       camf=X3F_read_camf(fp, subsection->dataLength);
       /* OK, camf datas will be decoded when parsing */
-      x3f->camf_list=X3F_fill_camf_list(subsection->dataLength-CAMF_HEADER_SIZE,
-					camf->camf_data,
-					x3f->camf_list);
+/*       x3f->camf_list=X3F_fill_camf_list(subsection->dataLength-CAMF_HEADER_SIZE, */
+/* 					camf->camf_data, */
+/* 					x3f->camf_list); */
       subsection->datas=(void *)camf;
 /* 	  x3f->camf=camf; */
     } else {

@@ -14,12 +14,15 @@
 #define CLIP(x) LIM(x,0,65535)
 #define SWAP(a,b) { a=a+b; b=a-b; a=a-b; }
 
-void interpolate(INTERPOLATED_IMG *i_img, X3F *x3f);
-void simple_coeff (INTERPOLATED_IMG *img, int index);
-float foveon_avg (short *pix, int range[2], float cfilt);
-short *foveon_make_curve (double max, double mul, double filt);
-void foveon_make_curves(short **curvep, float dq[3], float div[3], float filt);
-int foveon_apply_curve (short *curve, int i);
-void apply_gamma(INTERPOLATED_IMG *interpolated, int output_bps, float bright, char *ifname);
-void foveon_f20_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f);
+void x3f_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f);
+void x3f_simple_coeff (INTERPOLATED_IMG *img, int index);
+float x3f_foveon_avg (short *pix, int range[2], float cfilt);
+short *x3f_foveon_make_curve (double max, double mul, double filt);
+void x3f_foveon_make_curves(short **curvep, float dq[3], float div[3], float filt);
+int x3f_foveon_apply_curve (short *curve, int i);
+void * x3f_foveon_camf_matrix (CAMF *camf, unsigned dim[3], const char *name);
+const char * x3f_foveon_camf_param (CAMF *camf, const char *block, const char *param);
+void x3f_apply_gamma(INTERPOLATED_IMG *interpolated, float bright);
+void x3f_output_ppm(INTERPOLATED_IMG *interpolated, int output_bps, int flip, char *ifname);
+void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f);
 #endif
