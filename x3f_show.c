@@ -53,126 +53,196 @@ void add_property(utf16_t *key, utf16_t *val, GtkWidget *tree){
   return;
 }
 
-/* void add_camf(char *key, uint32_t type, GtkWidget *tree){ */
-/*   GtkListStore *CAMFdata=  GTK_LIST_STORE(gtk_tree_view_get_model */
-/* 										  (GTK_TREE_VIEW(tree))); */
-/*   GtkTreeIter Iter; */
-/*   union { */
-/*     char atype[5]; */
-/*     uint32_t itype; */
-/*   } conv; */
+CMb_HEADER *get_camf_header (CAMF *camf, const char *name) {
+  unsigned idx;
+  char *pos;
 
-/*   memset(&conv, 0, sizeof(conv)); */
-/*   conv.itype=type; */
+  for (idx=0; idx < camf->dataSize; idx += sget4(pos+8)) {
+    pos = camf->camf_data + idx;
+    if (strncmp (pos, "CMb", 3)) break;
+    if (strcmp (name, pos+sget4(pos+12))) continue;
+	return (CMb_HEADER *)pos;
+  }
+  printf("camf entry %s not found!!\n", name);
+  return NULL;
 
-/*   gtk_list_store_append(CAMFdata, &Iter); */
-/*   gtk_list_store_set(CAMFdata, &Iter, */
-/* 					 0, key, */
-/* 					 1, conv.atype, */
-/* 					 -1); */
+}
 
-/*   return; */
-/* } */
+void add_camf(X3F *x3f, GtkWidget *tree){
+  GtkListStore *CAMFdata=  GTK_LIST_STORE(gtk_tree_view_get_model
+										  (GTK_TREE_VIEW(tree)));
+  GtkTreeIter Iter;
+  union {
+    char atype[5];
+    uint32_t itype;
+  } conv;
 
-/* void update_camf_view(GtkWidget *widget, X3F_FILE *x3f_file){ */
-/*   GtkWidget *camfTextview=(GtkWidget *)gtk_builder_get_object(p_builder, "CAMFdataTextview" ); */
-/*   GtkTreeIter iter; */
-/*   GtkTreeModel *model; */
-/*   GtkTextBuffer *buffer; */
-/*   char *value; */
-/*   CAMF_LIST_ENTRY *camf_entry; */
-/*   uint32_t i, c, v, valueCount; */
-/*   GString *string; */
-/*   CMbM *cmbm; */
-/*   PARAMETERS *params; */
 
-/*   if (gtk_tree_selection_get_selected(GTK_TREE_SELECTION(widget), &model, &iter)) { */
+  /*  FOR TRUEII camera, lots of camf blocks are missing, so IncludeBlocks list is not accurate */
+  memset(&conv, 0, sizeof(conv));
+  unsigned idx, num;
+  int i=0,j;
+  char *pos, *cp, *dp, *entry_name;
+  char *value; /* should be part of x3f */
+  
+  CAMF *camf;
+  DIR_ENTRY *section;
+  CMb_HEADER *header;
 
-/*     gtk_tree_model_get(model, &iter, 0, &value,  -1); */
+  section=X3F_get_section(x3f, X3F_CAMF);
+  camf=section->datas;
 
-/*     /\* OK, we need to find the corresponding camf entry *\/ */
-/*     for (camf_entry=x3f_file->x3f_struct->camf_list;camf_entry!=NULL;camf_entry=camf_entry->next){ */
-/*      if (!(strcmp(camf_entry->name, value))) */
-/* 		break; */
-/* 	} */
-/*     g_free(value); */
+  for (idx=0; idx < camf->dataSize; idx += sget4(pos+8)) {
+    pos = camf->camf_data + idx;
+    if (strncmp (pos, "CMb", 3)) break;
+    if (pos[3] != 'P') continue;
+    if (strcmp ("IncludeBlocks", pos+sget4(pos+12))) continue;
+	printf("IncludeBlocks found\n");
+	/* IncludeBlocks found */
+    cp = pos + sget4(pos+16);
+    j = num = sget4(cp); /* number of entries */
+	/* 	data=(char (**))calloc(num, sizeof (*data)); */
+    dp = pos + sget4(cp+4);
 
-/*     switch (camf_entry->CAMFtype) { */
-/*     case X3F_CMbT: */
-/*       string=g_string_new("Technical Infos\n"); */
-/* 	  g_string_append_printf(string, "%s\n", */
-/* 							 (char*)camf_entry->value); */
-/* 	  break; */
-/*     case X3F_CMbP: */
-/*       params=camf_entry->value; */
-/*       string=g_string_new("Parameters "); */
-/*       g_string_append_printf(string, "%s\nParameters count: %d\n", */
-/* 							 camf_entry->name, */
-/* 							 camf_entry->count); */
-/*       for (i=0; i<camf_entry->count; i++) */
-/* 		g_string_append_printf(string, "%s\t=>\t%s\n", params[i].name,params[i].value);  */
-/*       break; */
-/*     case X3F_CMbM: */
-/*       cmbm=camf_entry->value; */
-/*       string=g_string_new("Matrix "); */
-/*       g_string_append_printf(string, "%s\nMatrix dimension: %d\tMatrix data type: %d\n", */
-/* 							 camf_entry->name, */
-/* 							 camf_entry->count, */
-/* 							 cmbm->dataType); */
-/*       g_string_append_printf(string, "Individual plane size:"); */
-/*       for (i=0; i<camf_entry->count;i++) */
-/* 		g_string_append_printf(string, " %d", cmbm->planeElements[i]); */
-/*       g_string_append_printf(string, "\n\n"); */
-/*       g_string_append_printf(string, "The following values are not properly formatted\n"); */
-/*       g_string_append_printf(string, "I made the following assumption:\nfirst matrix dimension is the number of rows\n"); */
-/*       g_string_append_printf(string, "second matrix dimension is the number of columns\n"); */
-/*       g_string_append_printf(string, "third matrix dimension is the number of planes\n"); */
+    while (j--) {
+      cp += 8;
+	  /* find the type of the entry */
+	  if ((header=get_camf_header(camf, dp+sget4(cp))))
+		conv.itype=header->CAMFsubsectionID;
+	  else 
+		conv.itype=X3F_CMb;
 
-/*       /\* FIXME: we here assume the matrix dimensions will never exceed 3, which is right so far *\/ */
-/*       /\* We will make the assumption first dimension is the number of row, second dim is the number of columns, third is the deep of the array *\/ */
-/*       /\* this is really ugly code *\/ */
+	  gtk_list_store_append(CAMFdata, &Iter);
+	  gtk_list_store_set(CAMFdata, &Iter,
+						 0, dp+sget4(cp),
+						 1, conv.atype,
+						 -1);
 
-/*       /\* compute the number of values to display *\/ */
-/*       valueCount=1; */
-/*       for (i=0; i<camf_entry->count; i++) */
-/* 		valueCount*=cmbm->planeElements[i]; */
+/* 	  printf("%s\n", dp+sget4(cp)); */
+    }
+  }
 
-/*       for (i=0; i<valueCount; i++){ */
-/* 		switch (camf_entry->count){ */
-/* 		case 1: */
-/* 		  g_string_append_printf(string, "\n"); */
-/* 		  break; */
-/* 		case 2: */
-/* 		  if (i%cmbm->planeElements[1]==0) g_string_append_printf(string, "\n"); */
-/* 		  break; */
-/* 		case 3: */
-/* 		  if (i%cmbm->planeElements[1]==0) g_string_append_printf(string, "\n"); */
-/* 		  if (i%(cmbm->planeElements[0]*cmbm->planeElements[1])==0) g_string_append_printf(string, "\n"); */
-/* 		} */
-/* 		switch (cmbm->dataType) { */
-/* 		case 0: */
-/* 		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_16); */
-/* 		  break; */
-/* 		case 3: */
-/* 		  g_string_append_printf(string, "%f ", cmbm->matrix[i].f); */
-/* 		  break; */
-/* 		case 6: */
-/* 		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_32); */
-/* 		  break; */
-/* 		default: */
-/* 		  g_string_append_printf(string, "%d ", cmbm->matrix[i].ui_32); */
-/* 		} */
-/*       } */
-/* 	  break; */
-/*     } */
-/*     value=g_string_free(string, FALSE); */
- 
-/* 	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(camfTextview), GTK_WRAP_WORD); */
-/* 	buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (camfTextview)); */
-/*     gtk_text_buffer_set_text (buffer, value, -1); */
-/*   } */
-/*   g_free(value); */
-/* } */
+  return;
+}
+
+void update_camf_view(GtkWidget *widget, X3F *x3f){
+  GtkWidget *camfTextview=(GtkWidget *)gtk_builder_get_object(p_builder, "CAMFdataTextview" );
+  GtkTreeIter iter;
+  GtkTreeModel *model;
+  GtkTextBuffer *buffer;
+  char *value, *pos, *dp, *cp;
+  CAMF_LIST_ENTRY *camf_entry;
+  uint32_t i, c, v, valueCount, count, type;
+  GString *string;
+  CMbM *cmbm;
+  PARAMETERS *params;
+  int32_t *matrix;
+  float *fmatrix;
+  CMb_HEADER *header;
+  CAMF *camf;
+  DIR_ENTRY *section;
+  uint dim[3];
+
+  section=X3F_get_section(x3f, X3F_CAMF);
+  camf=section->datas;
+
+  if (gtk_tree_selection_get_selected(GTK_TREE_SELECTION(widget), &model, &iter)) {
+
+    gtk_tree_model_get(model, &iter, 0, &value,  -1);
+
+    /* OK, we need to find the corresponding camf entry */
+	/* obtain the Header to get the CAMFsubsectionID (CMbT, CMbP, CMbM) */
+	/* place the pos to datastart */
+	/* act accordingly depending of CAMFsubsectionID */
+	if (!(header= get_camf_header(camf, value))) return;
+	pos=(char *)header+header->dataOffset;
+	/* 	matrix=X3F_foveon_camf_matrix(camf, dim, value); */
+
+    switch (header->CAMFsubsectionID) {
+    case X3F_CMbT:
+      string=g_string_new("Technical Infos\n");
+	  g_string_append_printf(string, "%s\n",
+							 pos+4);
+	  break;
+    case X3F_CMbP:
+	  /* CMbP: pos=> number of params to be found */
+ 	  cp=pos;
+	  dp=(char*)header+sget4(cp+4);
+	  count=sget4(pos);
+	  string=g_string_new("Parameters ");
+      g_string_append_printf(string, "%s\nParameters count: %d\n",
+							 value,
+							 count);
+	  while (count--) {
+		cp+=8;
+		g_string_append_printf(string, "%s\t=>\t%s\n", dp+sget4(cp),dp+sget4(cp+4));
+	  }
+      break;
+    case X3F_CMbM:
+	  /*       cmbm=camf_entry->value; */
+      string=g_string_new("Matrix ");
+	  count=sget4(pos+4);
+	  type=sget4(pos);
+      g_string_append_printf(string, "%s\nMatrix dimension: %d\tMatrix data type: %d\n", value, count, type);
+	  if (type && type != 3)
+		matrix=X3F_foveon_camf_matrix(camf, dim, value);
+	  else
+		fmatrix=X3F_foveon_camf_matrix(camf, dim, value);
+
+      g_string_append_printf(string, "Individual plane size:");
+      for (i=0; i<count;i++)
+		g_string_append_printf(string, " %d", dim[i]);
+      g_string_append_printf(string, "\n\n");
+	  /*       g_string_append_printf(string, "The following values are not properly formatted\n"); */
+	  /*       g_string_append_printf(string, "I made the following assumption:\nfirst matrix dimension is the number of rows\n"); */
+	  /*       g_string_append_printf(string, "second matrix dimension is the number of columns\n"); */
+	  /*       g_string_append_printf(string, "third matrix dimension is the number of planes\n"); */
+
+	  /*       /\* FIXME: we here assume the matrix dimensions will never exceed 3, which is right so far *\/ */
+	  /*       /\* We will make the assumption first dimension is the number of row, second dim is the number of columns, third is the deep of the array *\/ */
+	  /*       /\* this is really ugly code *\/ */
+
+	  /*       /\* compute the number of values to display *\/ */
+      valueCount=1;
+      for (i=0; i<count; i++)
+		valueCount*=dim[i];
+
+      for (i=0; i<valueCount; i++){
+		switch (count){
+		case 1:
+		  g_string_append_printf(string, "\n");
+		  break;
+		case 2:
+		  if (i%dim[1]==0) g_string_append_printf(string, "\n");
+		  break;
+		case 3:
+		  if (i%dim[1]==0) g_string_append_printf(string, "\n");
+		  if (i%(dim[0]*dim[1])==0) g_string_append_printf(string, "\n");
+		}
+		if (type && type!=3)
+		  g_string_append_printf(string, "%d ", matrix[i]);
+		else
+		  g_string_append_printf(string, "%f ", fmatrix[i]);
+      }
+	  if (type && type!=3){
+		if (matrix)
+		  free(matrix);
+	  } else {
+		if (fmatrix) free(fmatrix);
+	  }
+	  break;
+	default:
+	  printf("Unknnown CAMF subsection!²\n");
+    }
+    value=g_string_free(string, FALSE);
+	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(camfTextview), GTK_WRAP_WORD);
+	buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (camfTextview));
+    gtk_text_buffer_set_text (buffer, value, -1);
+  }
+
+  g_free(value);
+
+}
 
 
 int sort_metadata(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer userdata){
@@ -213,12 +283,12 @@ gboolean load_file(gpointer userdata) {
   GdkPixbuf *previewImg, *rawImg;
   IMA *ima;
   PROPERTY *prop;
-/*   CAMF_LIST_ENTRY *camf_entry; */
+  /*   CAMF_LIST_ENTRY *camf_entry; */
   X3F_FILE *x3f_file=(X3F_FILE *)userdata;
   INTERPOLATED_IMG *interpolated=x3f_file->interpolated_img;
   uint count, row, col;
   uint8_t *img24=NULL;
-  uint i,c,value;
+  uint i,c,value, num;
   GString *string;
   uint16_t (*raw_img)[4];
   uint16_t (*i_img)[4]=NULL;
@@ -234,6 +304,9 @@ gboolean load_file(gpointer userdata) {
 
   X3F_decode_raw(x3f->raw->datas);
 
+  /*   num=X3F_foveon_camf_list(x3f); */
+  /*   printf("%d camf entries\n", num); */
+  /*   printf("cmaf_entry: %s\n", x3f->camf_list[0]); */
   ima=(IMA *)x3f->raw->datas;
   i_img= (uint16_t (*)[4]) calloc (ima->rows*ima->columns*4, sizeof (uint16_t));
   memcpy(i_img, ima->imageData, ima->rows*ima->columns*4*sizeof (uint16_t));
@@ -287,11 +360,11 @@ gboolean load_file(gpointer userdata) {
   gtk_tree_view_set_model(GTK_TREE_VIEW(CAMFdataTreeView),
 						  GTK_TREE_MODEL(CAMFdata));
   g_object_unref(CAMFdata);
-/*   for (camf_entry=x3f->camf_list;camf_entry!=NULL;camf_entry=camf_entry->next){ */
-/*     add_camf(camf_entry->name, camf_entry->CAMFtype, CAMFdataTreeView); */
-/*   } */
-/*   g_signal_connect(selection, "changed", */
-/* 				   G_CALLBACK(update_camf_view), x3f_file); */
+  /*   for (i=0; i<num; i++){ */
+  add_camf(x3f, CAMFdataTreeView);
+  /*   } */
+  g_signal_connect(selection, "changed",
+				   G_CALLBACK(update_camf_view), x3f);
 
  
   /* Display THUMBNAIL */
