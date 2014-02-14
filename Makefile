@@ -9,8 +9,8 @@ LDFLAGS=-L./ -lx3f -lm -ljpeg `pkg-config gtk+-3.0 gmodule-2.0 --libs`
 
 libx3f: raw_x3f.o interpolation.o
 	$(CC) -shared -Wl,-soname,libx3f.so.0 -o libx3f.so.0.0.1 -lc -lm -lglib-2.0 -fPIC raw_x3f.o interpolation.o
-# 	ln -s libx3f.so.0.0.1 libx3f.so.0
-# 	ln -s libx3f.so.0 libx3f.so
+	ln -s libx3f.so.0.0.1 libx3f.so.0
+	ln -s libx3f.so.0 libx3f.so
 
 raw_x3f.o: raw_x3f.c raw_x3f.h
 	$(CC) -o raw_x3f.o -c raw_x3f.c -fPIC $(CFLAGS)
