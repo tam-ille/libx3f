@@ -1,0 +1,26 @@
+15/02/2014
+
+Actuellement, la libx3f ouvre tous les fichiers x3f de tous les apn
+SIGMA et en principe du polaroid X530.
+
+Il y a cependant quelques limitations:
+
+- la libx3f ne gère pas pour le moment les pixels rectangulaires. On
+retrouve ceux-ci dans les images moyenne résolution et peut-pêtre
+basse résolution, je dois encore vérifier cela.
+
+- le post-traitement des images n'est pas ou mal assuré. En principe,
+pour les pré-TRUEII (antérieurs au DP2 et SD15), c'est l'algorithme
+dcraw de Dave Coffin qui est utilisé. Il a été en partie modifié et
+doit être testé plus avant. Pour les TRUEII, l'algorithme idéal de
+traitement n'a pas encore été trouvé, il en résulte donc des images
+dont les couleurs sont faussées. Par ailleurs, ces images ne sont pas
+correctement contrastées, manquent de saturation et ne subissent aucun
+traitement de renforcement de la nettetté. Cependant, en faisant un ajustement
+automatique des niveaux dans Gimp, on obtient une image de meilleure
+qualité.
+
+- Toutes les fonctions de base concernant le chargement et le décodage
+des fichiers X3F sont préfixées X3F_. Les fonctions concernant le
+post-traitement des données raw sont préfixées x3f_.
+
