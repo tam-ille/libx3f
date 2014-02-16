@@ -12,6 +12,8 @@
 #include <locale.h>
 #include "interpolation.h"
 #include "raw_x3f.h"
+#include <lcms2.h>
+
 
 float x3f_foveon_avg (short *pix, int range[2], float cfilt)
 {
@@ -325,6 +327,22 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
   printf ("TRUEII interpolation...\n");
 /*   free(i_img->img); */
   img=(ushort (*)[4])i_img->img;
+  /* LCMS2 */
+/*   cmsHPROFILE hInProfile, hOutProfile; */
+/*   cmsHTRANSFORM hTransform; */
+/* /\*   uint16_t *img2; *\/ */
+/* /\*   img2=(uint16_t *)malloc(height*width*sizeof (*img2)*4); *\/ */
+  
+/*   hInProfile=cmsOpenProfileFromFile("ICCProfile/ICCProfile_X3F.icc", "r"); */
+/*   hOutProfile = cmsOpenProfileFromFile("ICCProfile/ICCProfile_sRGB.icc", "r"); */
+ 
+/*   hTransform = cmsCreateTransform(hInProfile, TYPE_RGB_16, hOutProfile, TYPE_RGB_16, INTENT_PERCEPTUAL, 0); */
+/*   cmsCloseProfile(hInProfile); */
+/*   cmsCloseProfile(hOutProfile); */
+/*   for (ipix=img[0]; ipix<img[height*width]; ipix+=4){ */
+/* 	FORC3 cmsDoTransform(hTransform, &ipix[c], &ipix[c], sizeof(ushort)); */
+/*   } */
+/*   cmsDeleteTransform(hTransform); */
   /* Try the quattro approach */
   /* keep all blue values */
   /* average green and red on a 2x2 square */
@@ -725,13 +743,13 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 
 
   /* Converting to float (range: 0.0-1.0) */
-  for (i=0; i < height*width*4; i++) { 
+  for (i=0; i < height*width*4; i++) {
 	//type cast "integerimage" from integer to double and set val equal to integerimage
 	val = (double)img[0][i]/65535;
 /* 	if (!val) continue; */
 	//set the double floating point array "image" equal to val
 	image[0][i]=val;
-  } 
+  }
   /* ColorModeCompensation */
   for (pix=image[0]; pix < image[height*width]; pix+=4) {
 	FORC3 {
@@ -788,7 +806,7 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 /* 	} */
 /* 	if (ival>max) max=ival; */
 	img[i][c]=iipix[c]; /* 14-bits */
-  } 
+  }
   }
 /* 	printf("rgb_min: %d %d %d\n", rgb_min[0], rgb_min[1], rgb_min[2]); */
 /* 	printf("rgb_max: %d %d %d\n", rgb_max[0], rgb_max[1], rgb_max[2]); */
@@ -805,6 +823,11 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 	FORC3 ipix[c] -= x3f_foveon_apply_curve (curve[c], ipix[c]-sum);
   }
   free(image);
+
+
+/* /\*   free(i_img->img); *\/ */
+/*   i_img->img=img2; */
+/*   img=(ushort (*)[4])i_img->img; */
 
 /* 	/\*   Smooth the image bottom-to-top and save at 1/4 scale *\/ */
 /* 	shrink = (short (*)[3]) calloc ((height/4), (width/4)*sizeof *shrink); */
@@ -873,16 +896,37 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
  for (i=0; i < 8; i++)
    free (curve[i]);
 
+ uint histogram[0xffff][4];
+ int minlevel[3], maxlevel[3];
  memset(rgb_max,0, sizeof rgb_max);
  memset(rgb_min,65535, sizeof rgb_min);
+ memset(histogram,0,sizeof histogram);
  for (ipix=img[0]; ipix<img[height*width]; ipix+=4){
    FORC3 {
-	 ipix[c]=((ipix[c]-rgb_mini[c])*65535/(rgb_maxi[c]-rgb_mini[c]));
+	 ipix[c]=((ipix[c]-rgb_mini[c])*65035/(rgb_maxi[c]-rgb_mini[c]));
+/* 	 histogram[ipix[c]][c]+=1; */
 /* 	 if (ipix[c]>65534) ipix[c]=65535; */
 	 if (ipix[c]>rgb_max[c]) rgb_max[c]=ipix[c];
 	 if (ipix[c]<rgb_min[c]) rgb_min[c]=ipix[c];
    }
  }
+/*  printf("Finding autolevels...\n"); */
+/*  FORC3 { */
+/*    for (i=0;i<65534;i++){ */
+/* 	 while (histogram[i][c]<100) continue; */
+/* 	 minlevel[c]=i; */
+/* 	 printf("histogram[%d][%d]=%d\n", i, c, histogram[i][c]); */
+/*  	 break; */
+/*   } */
+/* /\*    for (i=65534; i>1;i--){ *\/ */
+/* /\* 	 while (histogram[i][c]<100) continue; *\/ */
+/* /\* 	 maxlevel[c]=i; *\/ */
+/* /\* 	 printf("histogram[%d][%d]=%d\n", i, c, histogram[i][c]); *\/ */
+/* /\* 	 break; *\/ */
+/* /\*    } *\/ */
+/*    printf("minlevel[%d]: %d\t maxlevel[%d]: %d\n",c, c, minlevel[c], maxlevel[c]); */
+/*  } */
+
  printf("rgb_min: %d %d %d\n", rgb_min[0], rgb_min[1], rgb_min[2]);
  printf("rgb_max: %d %d %d\n", rgb_max[0], rgb_max[1], rgb_max[2]);
 

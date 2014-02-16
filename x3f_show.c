@@ -445,10 +445,10 @@ gboolean load_file(gpointer userdata) {
   if ((ima->flags & DECODED_IMAGE)==DECODED_IMAGE) {
     img24=malloc(sizeof(*img24)*count*3);
     for (i=0;i<count;i++){
-	  if ((interpolated->curve[temp[i][0]]>>8)>255)
+	  if ((temp[i][0]>>8)>255)
 		value=255;
 	  else
-		value=interpolated->curve[temp[i][0]]>>8;
+		value=temp[i][0]>>8;
 	  img24[i*3]=img24[i*3+1]=img24[i*3+2]=value;
 	}
     tmp=gdk_pixbuf_new_from_data(img24, GDK_COLORSPACE_RGB, FALSE, 8,
@@ -471,10 +471,10 @@ gboolean load_file(gpointer userdata) {
   if ((ima->flags & DECODED_IMAGE)==DECODED_IMAGE) {
     img24=malloc(sizeof(*img24)*count*3);
     for (i=0;i<count;i++){
-	  if ((interpolated->curve[temp[i][1]]>>8)>255)
+	  if ((temp[i][1]>>8)>255)
 		value=255;
 	  else
-		value=interpolated->curve[temp[i][1]]>>8;
+		value=temp[i][1]>>8;
 	  img24[i*3+c]=img24[i*3+c+1]=img24[i*3+c+2]=value;
     }
     tmp=gdk_pixbuf_new_from_data(img24, GDK_COLORSPACE_RGB, FALSE, 8,
@@ -497,10 +497,10 @@ gboolean load_file(gpointer userdata) {
   if ((ima->flags & DECODED_IMAGE)==DECODED_IMAGE) {
 	img24=malloc(sizeof(*img24)*count*3);
 	for (i=0;i<count;i++){
-	  if ((interpolated->curve[temp[i][2]]>>8)>255)
+	  if ((temp[i][2]>>8)>255)
 		value=255;
 	  else
-		value=interpolated->curve[temp[i][2]]>>8;
+		value=temp[i][2]>>8;
 	  img24[i*3+c]=img24[i*3+c+1]=img24[i*3+c+2]=value;
 	}
     tmp=gdk_pixbuf_new_from_data(img24, GDK_COLORSPACE_RGB, FALSE, 8,
