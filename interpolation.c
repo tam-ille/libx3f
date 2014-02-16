@@ -579,12 +579,16 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 
 	/*   if ((badpix = (unsigned int *) X3F_foveon_camf_matrix (camf, dim, "BadClustersF20"))) { */
 	/*   } */
+
+
+  }
 	if ((badpix = (unsigned int *) X3F_foveon_camf_matrix (camf, dim, "BadPixelsF20"))) {
 	  for (i=0; i < (int)dim[0]*(int)dim[1]; i+=3) {
-		col = (badpix[i]) -keep[0];
-		row = (badpix[i+1] ) -keep[1];
+		col = (badpix[i+1]) -keep[0];
+		row = (badpix[i] ) -keep[1];
 		if ((row-1) > height-3 || (col-1) > width-3)
 		  continue;
+/* 		FORC3 printf("%d %d: pixel[%d]= %d\n", row, col, c, img[row*width+col][c]); */
 		memset (fsum, 0, sizeof fsum);
 		for (sum=j=0; j < 8; j++){
 		  /* 	if (badpix[i] & (1 << j)) { */
@@ -612,9 +616,6 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 	  }
 	  free (badpix);
 	}
-
-
-  }
 
 	/* Array for 5x5 Gaussian averaging of red values */
 	smrow[6] = (int (*)[3]) calloc (width*5, sizeof **smrow);
@@ -819,7 +820,7 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 
   for (ipix=img[0]; ipix < img[height*width]; ipix+=4){
 	FORC3 ipix[c] -= x3f_foveon_apply_curve (curve[c], ipix[c]);
-	sum = (ipix[0]+ipix[1]+ipix[1]+ipix[2]) >> 2;
+	sum = (ipix[0]+ipix[1]/* +ipix[1] */+ipix[2])/3;
 	FORC3 ipix[c] -= x3f_foveon_apply_curve (curve[c], ipix[c]-sum);
   }
   free(image);
