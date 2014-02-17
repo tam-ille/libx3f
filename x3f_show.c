@@ -313,7 +313,7 @@ gboolean load_file(gpointer userdata) {
   interpolated->img=i_img;
   for (i=0; i < 0x10000; i++) interpolated->curve[i] = i;
   if (ima->dataFormat == X3F_DATA_FORMAT_TRUE_RAW) {
-	x3f_simple_coeff(interpolated, 0);
+	x3f_simple_coeff(interpolated, 1);
 	x3f_trueII_interpolate(interpolated, x3f);
   } else {
 	x3f_simple_coeff(interpolated, 0);
