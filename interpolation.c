@@ -165,6 +165,10 @@ void x3f_simple_coeff (INTERPOLATED_IMG *img, int index)
 	-0.5263, 1.4816, 0.017,
 	-0.0112, 0.0183, 0.9113 },
 
+  {    1.0832,-0.1931,-0.1016,
+	-0.5763,1.0616,0.017,
+	-0.0612,0.0183,0.8613 },
+
   {   1.2032, -0.1231, -0.1016,
 	-0.6263, 1.4816, 0.017,
 	-0.1112, 0.0183, 0.9113 },
@@ -325,26 +329,12 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
   printf ("TRUEII interpolation...\n");
 /*   free(i_img->img); */
   img=(ushort (*)[4])i_img->img;
-  /* Try the quattro approach */
-  /* keep all blue values */
-  /* average green and red on a 2x2 square */
-/*   for (row=0; row<height-1; row++){ */
-/* 	for (col=0; col<width-1; col++){ */
-/* 	  for (c=0; c<3; c++){ */
-/* 		sum=img[row*width+col][c]+img[row+1*width+col][c]+img[row*width+col+1][c]+img[row+1*width+col+1][c]; */
-/* 		sum/=4; */
-/* 		img[row*width+col][c]=img[row+1*width+col][c]=img[row*width+col+1][c]=img[row+1*width+col+1][c]=sum; */
-/* 	  } */
-/* 	} */
-/*   } */
+
 
   x3f_foveon_fixed (camf, dscr, 4, "DarkShieldColRange");
   printf("dscr: %d %d %d %d\n", dscr[0][0], dscr[0][1], dscr[1][0],
   dscr[1][1]);
-/*   memset(ppm, 0, sizeof ppm); */
-/*   for (i=0; i<3;i++) */
-/* 	FORC3 i_img->rgb_cam[c][i]*=cp2[c][i]; */
-/*   printf("CP1_Matrix:\n%f, %f, %f\n%f, %f, %f\n%f, %f, %f\n", cp1[0][0][0], cp1[0][0][1], cp1[0][0][2], cp1[0][1][0], cp1[0][1][1], cp1[0][1][2], cp1[0][2][0], cp1[0][2][1], cp1[0][2][2]); */
+
 
   x3f_foveon_fixed (camf, keep, 4, "KeepImageArea");
   printf("keep: %d %d %d\n", keep[0], keep[1], keep[2], keep[3]);
@@ -384,55 +374,46 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 				  X3F_foveon_camf_param (camf,"ColorModeCompensations", X3F_foveon_get_property(x3f->property, "CM_DESC")));
   printf("correct: %f %f %f\n", correct[0][0], correct[0][1], correct[0][2]);
 
+  memset (last2, 0, sizeof last2);
+  for (i=0; i < 3; i++)
+    for (j=0; j < 3; j++)
+	  FORC3 last2[i][j] += cam_xyz[i][c]* correct[c][j];
 
-/*   memset (last2, 0, sizeof last2); */
-/*   for (i=0; i < 3; i++) */
-/*     for (j=0; j < 3; j++) */
-/* 	  last[i][j]=cam_xyz[i][j]; */
-/* /\* 	  FORC3 last2[i][j] += cam_xyz[i][c]* correct[c][j]; *\/ */
-/* /\* /\\*   if (X3F_foveon_camf_param ("IncludeBlocks", "CP2_Matrix")) *\\/ *\/ */
-/* /\* /\\* 	x3f_foveon_fixed (cp2, 9, *\\/ *\/ */
-/* /\* /\\* 				  X3F_foveon_camf_param ("CP2_Matrix", cm_desc)); *\\/ *\/ */
-/* /\* /\\*   printf("correct: %f %f %f\n", correct[0][0], correct[0][1], correct[0][2]); *\\/ *\/ */
-
-/* /\* /\\*   memset (last2, 0, sizeof last2); *\\/ *\/ */
-/* /\* /\\*   for (i=0; i < 3; i++) *\\/ *\/ */
-/* /\* /\\*     for (j=0; j < 3; j++) *\\/ *\/ */
-/* /\* /\\* /\\\* 	  last[i][j]=cam_xyz[i][j]; *\\\/ *\\/ *\/ */
-/* /\* /\\* 	  FORC3 last2[i][j] += last[i][c]* cp2[c][j]; *\\/ *\/ */
-
-/*   #define LAST(x,y) last[(i+x)%3][(c+y)%3] */
-/*   for (i=0; i < 3; i++) */
-/*     FORC3 diag[c][i] = LAST(1,1)*LAST(2,2) - LAST(1,2)*LAST(2,1); */
-/*   #undef LAST */
-/*   FORC3 div[c] = diag[c][0]*0.3127 + diag[c][1]*0.329 + diag[c][2]*0.3583; */
-/*   FORC3 printf("div[%d]=%f\n", c, div[c]); */
+  #define LAST(x,y) last2[(i+x)%3][(c+y)%3]
+  for (i=0; i < 3; i++)
+    FORC3 diag[c][i] = LAST(1,1)*LAST(2,2) - LAST(1,2)*LAST(2,1);
+  #undef LAST
+  FORC3 div[c] = diag[c][0]*0.3127 + diag[c][1]*0.329 + diag[c][2]*0.3583;
+  FORC3 printf("div[%d]=%f\n", c, div[c]);
 
 /*   sprintf(str, "%sWBGains", (char *)x3f->header->whiteBalanceString); */
   if (X3F_foveon_camf_param (camf,"IncludeBlocks", "WhiteBalanceGains"))
 	x3f_foveon_fixed (camf,div, 3, X3F_foveon_camf_param (camf,"WhiteBalanceGains", (char *)x3f->header->whiteBalanceString));
-  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "TempGainFact"))
+  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "TempGainFact")){
 	x3f_foveon_fixed(camf,tempgainfact, 3, "TempGainFact");
-  FORC3 div[c]*=tempgainfact[c];
-  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "SensorAdjustmentGainFact"))
+	FORC3 div[c]*=tempgainfact[c];
+  }
+  if (X3F_foveon_camf_param(camf,"IncludeBlocks",
+							"SensorAdjustmentGainFact")){
 	x3f_foveon_fixed(camf,tempgainfact, 3, "SensorAdjustmentGainFact");
-  FORC3 div[c]*=tempgainfact[c];
-  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "CorrectColorGain_BR"))
+	FORC3 div[c]*=tempgainfact[c];
+  }
+  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "CorrectColorGain_BR")){
 	x3f_foveon_fixed(camf,tempgainfact, 3, "CorrectColorGain_BR");
-  FORC3 div[c]*=tempgainfact[c];
-  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "CorrectColorGain_GR"))
+	FORC3 div[c]*=tempgainfact[c];
+  }
+  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "CorrectColorGain_GR")){
 	x3f_foveon_fixed(camf,tempgainfact, 3, "CorrectColorGain_GR");
-  FORC3 div[c]*=tempgainfact[c];
-  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "CorrectColorGain_RR"))
+	FORC3 div[c]*=tempgainfact[c];
+  }
+  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "CorrectColorGain_RR")){
 	x3f_foveon_fixed(camf,tempgainfact, 3, "CorrectColorGain_RR");
-  FORC3 div[c]*=tempgainfact[c];
-  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "despAdjust"))
+	FORC3 div[c]*=tempgainfact[c];
+  }
+  if (X3F_foveon_camf_param(camf,"IncludeBlocks", "despAdjust")){
 	x3f_foveon_fixed(camf,tempgainfact, 3, "DespAdjust");
-  FORC3 div[c]*=tempgainfact[c];
-/*   if (X3F_foveon_camf_param(camf,"IncludeBlocks", "PGain")) */
-/* 	x3f_foveon_fixed(camf,pgain, 4, "PGain"); */
-/*   pgain[3]=pgain[4]; */
-/*   FORC3 div[c]*=pgain[c]; */
+	FORC3 div[c]*=tempgainfact[c];
+  }
   num = 0;
   FORC3 if (num < div[c]) num = div[c];
   FORC3 div[c] /= num;
@@ -446,397 +427,209 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
   curve[6] = x3f_foveon_make_curve (dsum, dsum, cfilt);
   curve[7] = x3f_foveon_make_curve (dsum*2, dsum*2, cfilt);
 
-  if (ima->imageDataType==X3F_DATA_TYPE_RAW){
-	printf("Old interpolation\n");
-/* 	  memset (trans, 0, sizeof trans); */
-/* 	  for (i=0; i < 3; i++) */
-/* 	    for (j=0; j < 3; j++) */
-/* 	      FORC3 { trans[i][j] += i_img->rgb_cam[i][c] * cam_xyz[c][j] * div[j]; */
-/* 		} */
-/* 	  FORC3 trsum[c] = trans[c][0] + trans[c][1] + trans[c][2]; */
-/* 	/\*   dsum = (6*trsum[0] + 11*trsum[1] + 3*trsum[2]) / 20; *\/ */
-/* 	  dsum = (6*trsum[0] + 11*trsum[1] + 3*trsum[2]) / 20; */
-/* 	  for (i=0; i < 3; i++) */
-/* 	    FORC3 last[i][c] = trans[i][c] * dsum / trsum[i]; */
-/* 	/\*   memset (trans, 0, sizeof trans); *\/ */
-/* 	  for (i=0; i < 3; i++) */
-/* 	    for (j=0; j < 3; j++) */
-/* 		  printf("trans[%d][%d]: %f\n", i, j, trans[i][j]); */
 
-/* 	  black = (float (*)[3]) calloc (height, sizeof *black); */
-/* 	  for (row=0; row < height; row++) { */
-/* 	    for (i=0; i < 6; i++) */
-/* 	      ddft[0][0][i] = ddft[1][0][i] + */
-/* 		row / (height-1.0) * (ddft[2][0][i] - ddft[1][0][i]); */
-/* 	    FORC3 black[row][c] = */
-/* 		( x3f_foveon_avg (img[row*width]+c, dscr[0], cfilt) + */
-/* 		  x3f_foveon_avg (img[row*width]+c, dscr[1], cfilt) * 3 */
-/* 		  - ddft[0][c][0] ) / 4 - ddft[0][c][1]; */
-/* 	  } */
-/* 	  memcpy (black, black+8, sizeof *black*8); */
-/* 	  memcpy (black+height-11, black+height-22, 11*sizeof *black); */
-/* 	  memcpy (last, black, sizeof last); */
-
-/* 	  for (row=1; row < height-1; row++) { */
-/* 	    FORC3 if (last[1][c] > last[0][c]) { */
-/* 		if (last[1][c] > last[2][c]) */
-/* 		  black[row][c] = (last[0][c] > last[2][c]) ? last[0][c]:last[2][c]; */
-/* 	      } else */
-/* 		if (last[1][c] < last[2][c]) */
-/* 		  black[row][c] = (last[0][c] < last[2][c]) ? last[0][c]:last[2][c]; */
-/* 	    memmove (last, last+1, 2*sizeof last[0]); */
-/* 	    memcpy (last[2], black[row+1], sizeof last[2]); */
-/* 	  } */
-/* 	  FORC3 black[row][c] = (last[0][c] + last[1][c])/2; */
-/* 	  FORC3 black[0][c] = (black[1][c] + black[3][c])/2; */
-
-/* 	  val = 1 - exp(-1/24.0); */
-/* 	  memcpy (fsum, black, sizeof fsum); */
-/* 	  for (row=1; row < height; row++) */
-/* 	    FORC3 fsum[c] += black[row][c] = */
-/* 		(black[row][c] - black[row-1][c])*val + black[row-1][c]; */
-/* 	  memcpy (last[0], black[height-1], sizeof last[0]); */
-/* 	  FORC3 fsum[c] /= height; */
-/* 	  for (row = height; row--; ) */
-/* 	    FORC3 last[0][c] = black[row][c] = */
-/* 		(black[row][c] - fsum[c] - last[0][c])*val + last[0][c]; */
-
-/* 	  memset (total, 0, sizeof total); */
-/* 	  for (row=2; row < height; row+=4) */
-/* 	    for (col=2; col < width; col+=4) { */
-/* 	      FORC3 total[c] += (short) img[row*width+col][c]; */
-/* 	      total[3]++; */
-/* 	    } */
-/* 	  for (row=0; row < height; row++) */
-/* 	    FORC3 black[row][c] += fsum[c]/2 + total[c]/(total[3]*100.0); */
-
-/* 	  if (X3F_foveon_camf_param (camf, "IncludeBlocks", "SpatialGainTables")) */
-/* 		sgain=(float (*)[3])X3F_foveon_camf_matrix (camf, dim, X3F_foveon_camf_param (camf, "SpatialGainTables", (char *)x3f->header->whiteBalanceString)); */
-/* 	  else */
-/* 		sgain = (float (*)[3]) X3F_foveon_camf_matrix (camf, dim, "SpatialGain"); */
-/* 	  if (!sgain) return; */
-/* 	  sgrow = (float (*)[3]) calloc (dim[1], sizeof *sgrow); */
-/* 	  sgx = (width + dim[1]-2) / (dim[1]-1); */
-
-/* 	  for (row=0; row < height; row++) { */
-
-/* 	    for (i=0; i < 6; i++) */
-/* 	      ddft[0][0][i] = ddft[1][0][i] + */
-/* 		row / (height-1.0) * (ddft[2][0][i] - ddft[1][0][i]); */
-/* 	    ipix = img[row*width]; */
-/* 	    memcpy (prev, ipix, sizeof prev); */
-/* 	    frow = row / (height-1.0) * (dim[2]-1); */
-/* 	    if ((irow = frow) == dim[2]-1) irow--; */
-/* 	    frow -= irow; */
-/* 	    for (i=0; i < dim[1]; i++) */
-/* 	      FORC3 sgrow[i][c] = sgain[ irow   *dim[1]+i][c] * (1-frow) + */
-/* 				  sgain[(irow+1)*dim[1]+i][c] *    frow; */
-/* 	    for (col=0; col < width; col++) { */
-/* 	      FORC3 { */
-/* 		diff = ipix[c] - prev[c]; */
-/* 		prev[c] = ipix[c]; */
-/* 		iipix[c] = ipix[c] + floor ((diff + (diff*diff >> 14)) * cfilt */
-/* 			- ddft[0][c][1] - ddft[0][c][0] * ((float) col/width - 0.5) */
-/* 			- black[row][c] ); */
-/* 	      } */
-/* 	      FORC3 { */
-/* 		work[0][c] = iipix[c] * iipix[c] >> 14; */
-/* 		work[2][c] = iipix[c] * work[0][c] >> 14; */
-/* 		work[1][2-c] = iipix[(c+1) % 3] * iipix[(c+2) % 3] >> 14; */
-/* 	      } */
-/* 	      FORC3 { */
-/* 		for (val=i=0; i < 3; i++) */
-/* 		  for (  j=0; j < 3; j++) */
-/* 		    val += ppm[c][i][j] * work[i][j]; */
-/* 		iipix[c] = floor ((iipix[c] + floor(val)) / div[c]); */
-/* 		if (iipix[c] > 32000) iipix[c] = 32000; */
-/* 		ipix[c] = iipix[c]; */
-/* 	      } */
-/* 	      ipix += 4; */
-/* 	    } */
-/* 	  } */
-/* 	  free (sgrow); */
-/* 	  free (black); */
-/* 	  free (sgain); */
-
-	/*   if ((badpix = (unsigned int *) X3F_foveon_camf_matrix (camf, dim, "BadClustersF20"))) { */
-	/*   } */
-	if ((badpix = (unsigned int *) X3F_foveon_camf_matrix (camf, dim, "BadPixelsF20"))) {
-	  for (i=0; i < (int)dim[0]*(int)dim[1]; i+=3) {
-		col = (badpix[i]) -keep[0];
-		row = (badpix[i+1] ) -keep[1];
-		if ((row-1) > height-3 || (col-1) > width-3)
-		  continue;
-		memset (fsum, 0, sizeof fsum);
-		for (sum=j=0; j < 8; j++){
-		  /* 	if (badpix[i] & (1 << j)) { */
+  if ((badpix = (unsigned int *) X3F_foveon_camf_matrix (camf, dim, "BadPixelsF20"))) {
+	for (i=0; i < (int)dim[0]*(int)dim[1]; i+=3) {
+	  col = (badpix[i+1]) -keep[0];
+	  row = (badpix[i] ) -keep[1];
+	  if ((row-1) > height-3 || (col-1) > width-3)
+		continue;
+	  memset (fsum, 0, sizeof fsum);
+	  for (sum=j=0; j < 8; j++){
+		/* 	if (badpix[i] & (1 << j)) { */
+		FORC3 fsum[c] += (short)
+		  img[(row+hood[j*2])*width+col+hood[j*2+1]][c];
+		sum++;
+	  }
+	  if (sum) FORC3 img[row*width+col][c] = fsum[c]/sum;
+	}
+	free (badpix);
+  } else   if ((badpix = (unsigned int *) X3F_foveon_camf_matrix (camf, dim, "BadPixels"))) {
+	for (i=0; i < (int)dim[0]; i++) {
+	  col = (badpix[i] >> 8 & 0xfff) - keep[0];
+	  row = (badpix[i] >> 20       ) - keep[1];
+	  if ((row-1) > height-3 ||(col-1) > width-3)
+		continue;
+	  memset (fsum, 0, sizeof fsum);
+	  for (sum=j=0; j < 8; j++)
+		if (badpix[i] & (1 << j)) {
 		  FORC3 fsum[c] += (short)
 			img[(row+hood[j*2])*width+col+hood[j*2+1]][c];
 		  sum++;
 		}
-		if (sum) FORC3 img[row*width+col][c] = fsum[c]/sum;
-	  }
-	  free (badpix);
-	} else   if ((badpix = (unsigned int *) X3F_foveon_camf_matrix (camf, dim, "BadPixels"))) {
-	  for (i=0; i < (int)dim[0]; i++) {
-		col = (badpix[i] >> 8 & 0xfff) - keep[0];
-		row = (badpix[i] >> 20       ) - keep[1];
-		if ((row-1) > height-3 ||(col-1) > width-3)
-		  continue;
-		memset (fsum, 0, sizeof fsum);
-		for (sum=j=0; j < 8; j++)
-		  if (badpix[i] & (1 << j)) {
-			FORC3 fsum[c] += (short)
-			  img[(row+hood[j*2])*width+col+hood[j*2+1]][c];
-			sum++;
-		  }
-		if (sum) FORC3 img[row*width+col][c] = fsum[c]/sum;
-	  }
-	  free (badpix);
+	  if (sum) FORC3 img[row*width+col][c] = fsum[c]/sum;
 	}
-
-
+	free (badpix);
   }
 
-	/* Array for 5x5 Gaussian averaging of red values */
-	smrow[6] = (int (*)[3]) calloc (width*5, sizeof **smrow);
-	/*   merror (smrow[6], "x3f_foveon_interpolate()"); */
-	for (i=0; i < 5; i++)
-	  smrow[i] = smrow[6] + i*width;
+  /* Array for 5x5 Gaussian averaging of red values */
+  smrow[6] = (int (*)[3]) calloc (width*5, sizeof **smrow);
+  /*   merror (smrow[6], "x3f_foveon_interpolate()"); */
+  for (i=0; i < 5; i++)
+	smrow[i] = smrow[6] + i*width;
 
-	/* Sharpen the reds against these Gaussian averages */
-	for (smlast=-1, row=2; row < height-2; row++) {
-	  while (smlast < row+2) {
-		for (i=0; i < 6; i++)
-		  smrow[(i+5) % 6] = smrow[i];
-		ipix = img[++smlast*width+2];
-		for (col=2; col < width-2; col++) {
-		  smrow[4][col][0] =
-			(ipix[0]*6 + (ipix[-4]+ipix[4])*4 + ipix[-8]+ipix[8] + 8) >> 4;
-		  ipix += 4;
-		}
-	  }
-	  ipix = img[row*width+2];
+  /* Sharpen the reds against these Gaussian averages */
+  for (smlast=-1, row=2; row < height-2; row++) {
+	while (smlast < row+2) {
+	  for (i=0; i < 6; i++)
+		smrow[(i+5) % 6] = smrow[i];
+	  ipix = img[++smlast*width+2];
 	  for (col=2; col < width-2; col++) {
-		smred = ( 6 *  smrow[2][col][0]
-				  + 4 * (smrow[1][col][0] + smrow[3][col][0])
-				  +      smrow[0][col][0] + smrow[4][col][0] + 8 ) >> 4;
-		if (col == 2)
-		  smred_p = smred;
-		i = ipix[0] + ((ipix[0] - ((smred*7 + smred_p) >> 3)) >> 3);
-		if (i > 32000) i = 32000;
-		ipix[0] = i;
+		smrow[4][col][0] =
+		  (ipix[0]*6 + (ipix[-4]+ipix[4])*4 + ipix[-8]+ipix[8] + 8) >> 4;
+		ipix += 4;
+	  }
+	}
+	ipix = img[row*width+2];
+	for (col=2; col < width-2; col++) {
+	  smred = ( 6 *  smrow[2][col][0]
+				+ 4 * (smrow[1][col][0] + smrow[3][col][0])
+				+      smrow[0][col][0] + smrow[4][col][0] + 8 ) >> 4;
+	  if (col == 2)
 		smred_p = smred;
-		ipix += 4;
+	  i = ipix[0] + ((ipix[0] - ((smred*7 + smred_p) >> 3)) >> 3);
+	  if (i > 32000) i = 32000;
+	  ipix[0] = i;
+	  smred_p = smred;
+	  ipix += 4;
+	}
+  }
+
+
+  /*   Adjust the brighter pixels for better linearity */
+  if (X3F_foveon_camf_param (camf,"IncludeBlocks", "SaturationLevel")) {
+	x3f_foveon_fixed (camf,satlev, 3, "SaturationLevel");
+	min = 0xffff;
+	FORC3 {
+	  i = satlev[c] / div[c];
+	  if (min > i) min = i;
+	}
+	limit = min * 9 >> 4;
+	for (ipix=img[0]; ipix < img[height*width]; ipix+=4) {
+	  if (ipix[0] <= limit || ipix[1] <= limit || ipix[2] <= limit)
+		continue;
+	  min = max = ipix[0];
+	  for (c=1; c < 3; c++) {
+		if (min > ipix[c]) min = ipix[c];
+		if (max < ipix[c]) max = ipix[c];
+	  }
+	  if (min >= limit*2) {
+		ipix[0] = ipix[1] = ipix[2] = max;
+	  } else {
+		i = 0x4000 - ((min - limit) << 14) / limit;
+		i = 0x4000 - (i*i >> 14);
+		i = i*i >> 14;
+		FORC3 ipix[c] += (max - ipix[c]) * i >> 14;
 	  }
 	}
+  }
 
-
-	/*   Adjust the brighter pixels for better linearity */
-	if (X3F_foveon_camf_param (camf,"IncludeBlocks", "SaturationLevel")) {
-	  x3f_foveon_fixed (camf,satlev, 3, "SaturationLevel");
-	  min = 0xffff;
-	  FORC3 {
-		i = satlev[c] / div[c];
-		if (min > i) min = i;
-	  }
-	  limit = min * 9 >> 4;
-	  for (ipix=img[0]; ipix < img[height*width]; ipix+=4) {
-		if (ipix[0] <= limit || ipix[1] <= limit || ipix[2] <= limit)
-		  continue;
-		min = max = ipix[0];
-		for (c=1; c < 3; c++) {
-		  if (min > ipix[c]) min = ipix[c];
-		  if (max < ipix[c]) max = ipix[c];
-		}
-		if (min >= limit*2) {
-		  ipix[0] = ipix[1] = ipix[2] = max;
-		} else {
-		  i = 0x4000 - ((min - limit) << 14) / limit;
-		  i = 0x4000 - (i*i >> 14);
-		  i = i*i >> 14;
-		  FORC3 ipix[c] += (max - ipix[c]) * i >> 14;
-		}
-	  }
-	}
-
-	/* /\* /\\*    Because photons that miss one detector often hit another, *\\/ *\/ */
-	/* /\* /\\*    the sum R+G+B is much less noisy than the individual colors. *\\/ *\/ */
-	/* /\* /\\*    So smooth the hues without smoothing the total. *\\/ *\/ */
-	for (smlast=-1, row=2; row < height-2; row++) {
-	  while (smlast < row+2) {
-		for (i=0; i < 6; i++)
-		  smrow[(i+5) % 6] = smrow[i];
-		ipix = img[++smlast*width+2];
-		for (col=2; col < width-2; col++) {
-		  FORC3 smrow[4][col][c] = (ipix[c-4]+2*ipix[c]+ipix[c+4]+2) >> 2;
-		  ipix += 4;
-		}
-	  }
-	  ipix = img[row*width+2];
+  /*    Because photons that miss one detector often hit another, */
+  /*    the sum R+G+B is much less noisy than the individual colors. */
+  /*    So smooth the hues without smoothing the total. */
+  for (smlast=-1, row=2; row < height-2; row++) {
+	while (smlast < row+2) {
+	  for (i=0; i < 6; i++)
+		smrow[(i+5) % 6] = smrow[i];
+	  ipix = img[++smlast*width+2];
 	  for (col=2; col < width-2; col++) {
-		FORC3 dev[c] = -x3f_foveon_apply_curve (curve[7], ipix[c] -
-											((smrow[1][col][c] + 2*smrow[2][col][c] + smrow[3][col][c]) >> 2));
-		sum = (dev[0] + dev[1] + dev[2]) >> 3;
-		FORC3 ipix[c] += dev[c] - sum;
+		FORC3 smrow[4][col][c] = (ipix[c-4]+2*ipix[c]+ipix[c+4]+2) >> 2;
 		ipix += 4;
 	  }
 	}
-	for (smlast=-1, row=2; row < height-2; row++) {
-	  while (smlast < row+2) {
-		for (i=0; i < 6; i++)
-		  smrow[(i+5) % 6] = smrow[i];
-		ipix = img[++smlast*width+2];
-		for (col=2; col < width-2; col++) {
-		  FORC3 smrow[4][col][c] =
-			(ipix[c-8]+ipix[c-4]+ipix[c]+ipix[c+4]+ipix[c+8]+2) >> 2;
-		  ipix += 4;
-		}
-	  }
-	  ipix = img[row*width+2];
+	ipix = img[row*width+2];
+	for (col=2; col < width-2; col++) {
+	  FORC3 dev[c] = -x3f_foveon_apply_curve (curve[7], ipix[c] -
+											  ((smrow[1][col][c] + 2*smrow[2][col][c] + smrow[3][col][c]) >> 2));
+	  sum = (dev[0] + dev[1] + dev[2]) >> 3;
+	  FORC3 ipix[c] += dev[c] - sum;
+	  ipix += 4;
+	}
+  }
+  for (smlast=-1, row=2; row < height-2; row++) {
+	while (smlast < row+2) {
+	  for (i=0; i < 6; i++)
+		smrow[(i+5) % 6] = smrow[i];
+	  ipix = img[++smlast*width+2];
 	  for (col=2; col < width-2; col++) {
-		for (total[3]=375, sum=60, c=0; c < 3; c++) {
-		  for (total[c]=i=0; i < 5; i++)
-			total[c] += smrow[i][col][c];
-		  total[3] += total[c];
-		  sum += ipix[c];
-		}
-		if (sum < 0) sum = 0;
-		j = total[3] > 375 ? (sum << 16) / total[3] : sum * 174;
-		FORC3 ipix[c] += x3f_foveon_apply_curve (curve[6],
-											 ((j*total[c] + 0x8000) >> 16) - ipix[c]);
+		FORC3 smrow[4][col][c] =
+		  (ipix[c-8]+ipix[c-4]+ipix[c]+ipix[c+4]+ipix[c+8]+2) >> 2;
 		ipix += 4;
 	  }
 	}
-
-
-
-  /* convert to RGB using WhiteBalanceColorCorrections and WhiteBalanceGains */
-  /* convert raw datas to XYZ */
-  /* adjust white point using WBXYValue */
-  /* do the interpolation */
-  /* go back to RGB */
-  /* how to use WhiteBalanceColorShadingFactor? */
-
-  image=(double(*)[4])calloc(width*height*4, sizeof (*image)[4]);
-  x3f_foveon_fixed (camf, cp2, 9, "CP2_Matrix");
-  for (i=0; i<3;i++)
-	FORC3 i_img->rgb_cam[c][i]=cp2[c][i];
-
-
-  /* Converting to float (range: 0.0-1.0) */
-  for (i=0; i < height*width*4; i++) { 
-	//type cast "integerimage" from integer to double and set val equal to integerimage
-	val = (double)img[0][i]/65535;
-/* 	if (!val) continue; */
-	//set the double floating point array "image" equal to val
-	image[0][i]=val;
-  } 
-  /* ColorModeCompensation */
-  for (pix=image[0]; pix < image[height*width]; pix+=4) {
-	FORC3 {
-	  for (dsum=i=0; i < 3; i++)
-		dsum += correct[c][i] * pix[i];
-	  if (dsum < 0)  dsum = 0;
-	  		if (dsum > 0.366216525521) dsum =  0.366216525521;
-	  pix[c] = dsum;
+	ipix = img[row*width+2];
+	for (col=2; col < width-2; col++) {
+	  for (total[3]=375, sum=60, c=0; c < 3; c++) {
+		for (total[c]=i=0; i < 5; i++)
+		  total[c] += smrow[i][col][c];
+		total[3] += total[c];
+		sum += ipix[c];
+	  }
+	  if (sum < 0) sum = 0;
+	  j = total[3] > 375 ? (sum << 16) / total[3] : sum * 174;
+	  FORC3 ipix[c] += x3f_foveon_apply_curve (curve[6],
+											   ((j*total[c] + 0x8000) >> 16) - ipix[c]);
+	  ipix += 4;
 	}
   }
 
-  wbxy[0]=0.27;
-  wbxy[1]=0.35;
-  x3f_foveon_fixed(camf, wbxy, 2, "WBXYValue");
+/*   x3f_foveon_fixed (camf, cp2, 9, "CP2_Matrix"); */
+/*   for (i=0; i<3;i++) */
+/* 	FORC3 i_img->rgb_cam[c][i]=cp2[c][i]; */
+  min=0xffff;
+  max=0;
 
-  for (pix=image[0]; pix < image[height*width]; pix+=4) {
-	FORC3 {
-	  if (pix[c] > 0.04045 ) pix[c] = pow(( ( pix[c] + 0.055 ) / 1.055 ), 2.4);
-	  else                   pix[c] /= 12.92;
+  for (row=0; row<height; row++){
+	ipix = img[row*width];
+	for (col=0; col<width; col++){
+	  for (c=0; c < 3; c++) iipix[c]=ipix[c];
+	  for (c=0; c < 3; c++) {
+		float tmp;
+		tmp=i_img->rgb_cam[c][0]*last2[c][0]* div[0]*iipix[0]+i_img->rgb_cam[c][1]*last2[c][1]*div[1]*iipix[1]+i_img->rgb_cam[c][2]*last2[c][2]*div[2]*iipix[2];
+		if (tmp<0) ipix[c]=0;
+/* 		else if (tmp >3500) ipix[c]=3500; */
+		else ipix[c]=floor(tmp);
+		if (ipix[c]<min)min=ipix[c];
+		if (ipix[c]>max)max=ipix[c];
+	  }
+	  ipix+=4;
 	}
-	FORC3 xyz_pix[c]=cp1[0][c][0]*pix[0]+cp1[0][c][1]*pix[1]+cp1[0][c][2]*pix[2];
-	x=xyz_pix[0]/(xyz_pix[0]+xyz_pix[1]+xyz_pix[2])+wbxy[0]-0.3;
-	y=xyz_pix[2]/(xyz_pix[0]+xyz_pix[1]+xyz_pix[2])+wbxy[1]-0.3;
-	xyz_pix[0]=x*xyz_pix[1]/y;
-	xyz_pix[2]=(1-x-y)*xyz_pix[1]/y;
-	FORC3 pix[c]=xyz_pix[0]*cp1[1][c][0]+xyz_pix[1]*cp1[1][c][1]+xyz_pix[2]*cp1[1][c][2];
-	/* 	  FORC3 printf("pix[%d]: %f\n", c, pix[c]); */
-	FORC3 if ( pix[c] > 0.0031308 ) pix[c] = 1.055 * (pow( pix[c] ,( 1 / 2.4 )) ) - 0.055;
-	else                     pix[c] *= 12.92 ;
-  }
-  for (pix=image[0]; pix < image[height*width]; pix+=4) {
-	FORC3 {
-	  for (dsum=i=0; i < 3; i++)
-		dsum += i_img->rgb_cam[c][i]*cam_xyz[c][i]*div[i] * pix[i];
-	  if (dsum < 0)  dsum = 0;
-	  /* 		      if (dsum > 0.366216525521) dsum =  0.366216525521; */
-	  fpix[c] = dsum;
-	}
-	FORC3 pix[c] = fpix[c];
-  }
 
-/*   for (i=0; i < height*width*4; i++) { */
-  memset(rgb_maxi,0, sizeof rgb_maxi);
-  memset(rgb_mini,65535, sizeof rgb_mini);
-  for (pix=image[0], i=0; pix<image[height*width]; pix+=4, i++){
-	FORC3 { iipix[c]=pix[c]*65535;
-/* 	  if (iipix[c]>) iipix[c]=0; */
-/* 	ival = image[0][i]*65535; */
-/* 	if (!ival)/\* {printf("ival: %d\n", ival); *\/ continue;/\* } *\/ */
-	/* 	  printf("Here\n"); */
-/* 	  printf("ipix[%d]: %d\n", c, ipix[c]); */
-	if (iipix[c]<rgb_mini[c]) rgb_mini[c]=iipix[c];
-	if (iipix[c]>rgb_maxi[c]) rgb_maxi[c]=iipix[c];
-/* 	} */
-/* 	if (ival>max) max=ival; */
-	img[i][c]=iipix[c]; /* 14-bits */
-  } 
   }
-/* 	printf("rgb_min: %d %d %d\n", rgb_min[0], rgb_min[1], rgb_min[2]); */
-/* 	printf("rgb_max: %d %d %d\n", rgb_max[0], rgb_max[1], rgb_max[2]); */
+  printf("min: %d\t max: %d\n", min, max);
 
-/*   memset(pgain, 1, sizeof pgain); */
-/*   if (X3F_foveon_camf_param(camf,"IncludeBlocks", "PGain")) */
-/* 	x3f_foveon_fixed(camf,pgain, 4, "PGain"); */
-/*   pgain[3]=pgain[4]; */
-/*   FORC3 div[c]*=pgain[c]; */
-
-  for (ipix=img[0]; ipix < img[height*width]; ipix+=4){
-	FORC3 ipix[c] -= x3f_foveon_apply_curve (curve[c], ipix[c]);
-	sum = (ipix[0]+ipix[1]+ipix[1]+ipix[2]) >> 2;
-	FORC3 ipix[c] -= x3f_foveon_apply_curve (curve[c], ipix[c]-sum);
-  }
-  free(image);
 
 /* 	/\*   Smooth the image bottom-to-top and save at 1/4 scale *\/ */
 /* 	shrink = (short (*)[3]) calloc ((height/4), (width/4)*sizeof *shrink); */
 /* 	/\*   merror (shrink, "x3f_foveon_interpolate()"); *\/ */
 /* 	for (row = height/4; row--; ) */
 /* 	  for (col=0; col < width/4; col++) { */
-/* 		ipix[0] = ipix[1] = ipix[2] = 0; */
+/* 		iipix[0] = iipix[1] = iipix[2] = 0; */
 /* 		for (i=0; i < 4; i++) */
 /* 		  for (j=0; j < 4; j++) */
-/* 			FORC3 ipix[c] += img[(row*4+i)*width+col*4+j][c]; */
+/* 			FORC3 iipix[c] += img[(row*4+i)*width+col*4+j][c]; */
 /* 		FORC3 */
 /* 		  if (row+2 > height/4) */
-/* 			shrink[row*(width/4)+col][c] = ipix[c] >> 4; */
+/* 			shrink[row*(width/4)+col][c] = iipix[c] >> 4; */
 /* 		  else */
 /* 			shrink[row*(width/4)+col][c] = */
-/* 			  (shrink[(row+1)*(width/4)+col][c]*1840 + ipix[c]*141 + 2048) >> 12; */
+/* 			  (shrink[(row+1)*(width/4)+col][c]*1840 + iipix[c]*141 + 2048) >> 12; */
 /* 	  } */
 
 /* 	/\* From the 1/4-scale image, smooth right-to-left *\/ */
 /* 	for (row=0; row < (height & ~3); row++) { */
-/* 	  ipix[0] = ipix[1] = ipix[2] = 0; */
+/* 	  iipix[0] = iipix[1] = iipix[2] = 0; */
 /* /\* 	  printf("Here %d\n", row); *\/ */
 /* 	  if ((row & 3) == 0) */
 /* 		for (col = width & ~3 ; col--; ) */
-/* 		  FORC3 smrow[0][col][c] = ipix[c] = */
-/* 			(shrink[(row/4)*(width/4)+col/4][c]*1485 + ipix[c]*6707 + 4096) >> 13; */
+/* 		  FORC3 smrow[0][col][c] = iipix[c] = */
+/* 			(shrink[(row/4)*(width/4)+col/4][c]*1485 + iipix[c]*6707 + 4096) >> 13; */
 
 /* 	  /\* Then smooth left-to-right *\/ */
-/* 	  ipix[0] = ipix[1] = ipix[2] = 0; */
+/* 	  iipix[0] = iipix[1] = iipix[2] = 0; */
 /* 	  for (col=0; col < (width & ~3); col++) */
-/* 		FORC3 smrow[1][col][c] = ipix[c] = */
-/* 		  (smrow[0][col][c]*1485 + ipix[c]*6707 + 4096) >> 13; */
+/* 		FORC3 smrow[1][col][c] = iipix[c] = */
+/* 		  (smrow[0][col][c]*1485 + iipix[c]*6707 + 4096) >> 13; */
 
 /* 	  /\* Smooth top-to-bottom *\/ */
 /* 	  if (row == 0) */
@@ -854,13 +647,13 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
 /* 		} */
 /* 		j = (j << 16) / i; */
 /* 		for (sum=c=0; c < 3; c++) { */
-/* 		  ipix[c] = x3f_foveon_apply_curve (curve[c+3], */
+/* 		  iipix[c] = x3f_foveon_apply_curve (curve[c+3], */
 /* 										((smrow[2][col][c] * j + 0x8000) >> 16) - img[row*width+col][c]); */
-/* 		  sum += ipix[c]; */
+/* 		  sum += iipix[c]; */
 /* 		} */
 /* 		sum >>= 3; */
 /* 		FORC3 { */
-/* 		  i = img[row*width+col][c] + ipix[c] - sum; */
+/* 		  i = img[row*width+col][c] + iipix[c] - sum; */
 /* 		  if (i < 0) i = 0; */
 /* 		  img[row*width+col][c] = i; */
 /* 		} */
@@ -873,18 +666,11 @@ void x3f_trueII_interpolate(INTERPOLATED_IMG *i_img, X3F *x3f)
  for (i=0; i < 8; i++)
    free (curve[i]);
 
- memset(rgb_max,0, sizeof rgb_max);
- memset(rgb_min,65535, sizeof rgb_min);
  for (ipix=img[0]; ipix<img[height*width]; ipix+=4){
    FORC3 {
-	 ipix[c]=((ipix[c]-rgb_mini[c])*65535/(rgb_maxi[c]-rgb_mini[c]));
-/* 	 if (ipix[c]>65534) ipix[c]=65535; */
-	 if (ipix[c]>rgb_max[c]) rgb_max[c]=ipix[c];
-	 if (ipix[c]<rgb_min[c]) rgb_min[c]=ipix[c];
+	 ipix[c]=((ipix[c]-min)*65535/(max-min));
    }
  }
- printf("rgb_min: %d %d %d\n", rgb_min[0], rgb_min[1], rgb_min[2]);
- printf("rgb_max: %d %d %d\n", rgb_max[0], rgb_max[1], rgb_max[2]);
 
  /* adjust Saturation */
  /* adjust black */

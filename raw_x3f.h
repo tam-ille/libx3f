@@ -17,6 +17,10 @@
 
 #define LIB_X3F_VERSION "0.2"
 
+#ifndef bool
+#define bool boolean
+#endif
+
 #ifdef LOCALEDIR
 #include <libintl.h>
 #define _(String) gettext(String)

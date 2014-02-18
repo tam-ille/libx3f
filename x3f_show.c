@@ -313,14 +313,14 @@ gboolean load_file(gpointer userdata) {
   interpolated->img=i_img;
   for (i=0; i < 0x10000; i++) interpolated->curve[i] = i;
   if (ima->dataFormat == X3F_DATA_FORMAT_TRUE_RAW) {
-	x3f_simple_coeff(interpolated, 0);
+	x3f_simple_coeff(interpolated, 1);
 	x3f_trueII_interpolate(interpolated, x3f);
   } else {
 	x3f_simple_coeff(interpolated, 0);
 	x3f_interpolate(interpolated, x3f);
   }
-  x3f_convert_to_rgb(interpolated, 1);
-  x3f_apply_gamma(interpolated, 1.0);
+  x3f_convert_to_rgb(interpolated, 2);
+  x3f_apply_gamma(interpolated, 0.75);
   x3f_output_ppm(interpolated, 16, 0, x3f_file->filename);
 
   renderer = gtk_cell_renderer_text_new();
@@ -445,10 +445,10 @@ gboolean load_file(gpointer userdata) {
   if ((ima->flags & DECODED_IMAGE)==DECODED_IMAGE) {
     img24=malloc(sizeof(*img24)*count*3);
     for (i=0;i<count;i++){
-	  if ((interpolated->curve[temp[i][0]]>>8)>255)
+	  if ((temp[i][0]>>8)>255)
 		value=255;
 	  else
-		value=interpolated->curve[temp[i][0]]>>8;
+		value=temp[i][0]>>8;
 	  img24[i*3]=img24[i*3+1]=img24[i*3+2]=value;
 	}
     tmp=gdk_pixbuf_new_from_data(img24, GDK_COLORSPACE_RGB, FALSE, 8,
@@ -471,10 +471,10 @@ gboolean load_file(gpointer userdata) {
   if ((ima->flags & DECODED_IMAGE)==DECODED_IMAGE) {
     img24=malloc(sizeof(*img24)*count*3);
     for (i=0;i<count;i++){
-	  if ((interpolated->curve[temp[i][1]]>>8)>255)
+	  if ((temp[i][1]>>8)>255)
 		value=255;
 	  else
-		value=interpolated->curve[temp[i][1]]>>8;
+		value=temp[i][1]>>8;
 	  img24[i*3+c]=img24[i*3+c+1]=img24[i*3+c+2]=value;
     }
     tmp=gdk_pixbuf_new_from_data(img24, GDK_COLORSPACE_RGB, FALSE, 8,
@@ -497,10 +497,10 @@ gboolean load_file(gpointer userdata) {
   if ((ima->flags & DECODED_IMAGE)==DECODED_IMAGE) {
 	img24=malloc(sizeof(*img24)*count*3);
 	for (i=0;i<count;i++){
-	  if ((interpolated->curve[temp[i][2]]>>8)>255)
+	  if ((temp[i][2]>>8)>255)
 		value=255;
 	  else
-		value=interpolated->curve[temp[i][2]]>>8;
+		value=temp[i][2]>>8;
 	  img24[i*3+c]=img24[i*3+c+1]=img24[i*3+c+2]=value;
 	}
     tmp=gdk_pixbuf_new_from_data(img24, GDK_COLORSPACE_RGB, FALSE, 8,
