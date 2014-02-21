@@ -179,10 +179,10 @@ void update_camf_view(GtkWidget *widget, X3F *x3f){
 	  count=sget4(pos+4);
 	  type=sget4(pos);
       g_string_append_printf(string, "%s\nMatrix dimension: %d\tMatrix data type: %d\n", value, count, type);
-	  if (type && type != 3)
-		matrix=X3F_foveon_camf_matrix(camf, dim, value);
-	  else
+	  if (type && type == 3|| type==5)
 		fmatrix=X3F_foveon_camf_matrix(camf, dim, value);
+	  else
+		matrix=X3F_foveon_camf_matrix(camf, dim, value);
 
       g_string_append_printf(string, "Individual plane size:");
       for (i=0; i<count;i++)
@@ -214,10 +214,10 @@ void update_camf_view(GtkWidget *widget, X3F *x3f){
 		  if (i%dim[1]==0) g_string_append_printf(string, "\n");
 		  if (i%(dim[0]*dim[1])==0) g_string_append_printf(string, "\n");
 		}
-		if (type && type!=3)
-		  g_string_append_printf(string, "%d ", matrix[i]);
-		else
+		if (type && type==3 || type==5)
 		  g_string_append_printf(string, "%f ", fmatrix[i]);
+		else
+		  g_string_append_printf(string, "%d ", matrix[i]);
       }
 	  if (type && type!=3){
 		if (matrix)
@@ -319,8 +319,8 @@ gboolean load_file(gpointer userdata) {
 	x3f_simple_coeff(interpolated, 0);
 	x3f_interpolate(interpolated, x3f);
   }
-  x3f_convert_to_rgb(interpolated, 2);
-  x3f_apply_gamma(interpolated, 0.75);
+  x3f_convert_to_rgb(interpolated, 1);
+  x3f_apply_gamma(interpolated, 1.0);
   x3f_output_ppm(interpolated, 16, 0, x3f_file->filename);
 
   renderer = gtk_cell_renderer_text_new();
